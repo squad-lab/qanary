@@ -1,0 +1,20 @@
+image: "python:3.9"
+
+stages:
+  - linting
+  - testing
+
+black:
+  stage: linting
+  script:
+    - python3 -m pip install black
+    - black --check .
+  only:
+    - merge_requests
+
+build-test:
+  stage: testing
+  script:
+    - pip install -e .
+  only:
+    - merge_requests
