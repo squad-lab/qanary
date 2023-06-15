@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bfutils"
+version = "0.1.0"
+authors = [
+  { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
+  { name="Lino Visser", email="l.visser@fz-juelich.de" },
+  { name="Niels Focke", email="n.focke@fz-juelich.de" },
+]
+description = "Sweep and measurement utilities for qcodes"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+]
+keywords = ["qcodes"]
+dependencies = [
+  "qcodes"
+]
+
+
+[project.urls]
+"Homepage" = "https://gitlab.com/squad-lab/qcutils"
+"Bug Tracker" = "https://gitlab.com/squad-lab/qcutils/-/issues"
