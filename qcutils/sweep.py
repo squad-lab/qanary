@@ -246,6 +246,14 @@ def _stepper(
 
             sleep(sweep.delay)
 
+        if depth == 1:
+            datasaver.add_result(
+                *(
+                    list(zip(plot_independents, sweep_cache))
+                    + [(dependent, dependent()) for dependent in dependents]
+                )
+            )
+
         if depth > 1:
             _stepper(
                 depth - 1,
@@ -256,13 +264,6 @@ def _stepper(
                 datasaver,
                 interrupt,
                 offset,
-            )
-        else:
-            datasaver.add_result(
-                *(
-                    list(zip(plot_independents, sweep_cache))
-                    + [(dependent, dependent()) for dependent in dependents]
-                )
             )
     return
 
