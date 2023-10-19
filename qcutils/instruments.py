@@ -213,3 +213,22 @@ class Conductance(Instrument):
     def get_conductance(self):
         sleep(self.delay)
         return (1 / self.get_resistance()) * (1 / self.cond_quantum)
+
+
+class Delay(Instrument):
+    def __init__(self, name, delay=0.1):
+        super().__init__(name)
+
+        self.num_time = 0
+        self.delay = delay
+
+        self.add_parameter(
+            "time",
+            label="Time Delay",
+            set_cmd=self.set_delay,
+            unit=f"x ({delay}s)",
+        )
+
+    def set_delay(self, number):
+        self.num_time += 1
+        sleep(self.delay)
