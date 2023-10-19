@@ -71,7 +71,7 @@ class Lockin(Instrument):
                     7: 12 * self.tc(),
                     8: 13 * self.tc(),
                 }
-                self.t_avg = filter_settling[self.order]
+                self.t_avg = filter_settling[int(self.order())]
 
                 self.autosigout = self.core.sigouts[0].autorange
                 self.autovoltin = self.core.sigins[0].autorange
