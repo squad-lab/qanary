@@ -62,14 +62,14 @@ class Lockin(Instrument):
                 self.tc_sugg = 5 / self.frequency()
 
                 filter_settling = {
-                    1: 3 * self.tc,
-                    2: 4.7 * self.tc,
-                    3: 6.3 * self.tc,
-                    4: 7.8 * self.tc,
-                    5: 9.2 * self.tc,
-                    6: 11 * self.tc,
-                    7: 12 * self.tc,
-                    8: 13 * self.tc,
+                    1: 3 * self.tc(),
+                    2: 4.7 * self.tc(),
+                    3: 6.3 * self.tc(),
+                    4: 7.8 * self.tc(),
+                    5: 9.2 * self.tc(),
+                    6: 11 * self.tc(),
+                    7: 12 * self.tc(),
+                    8: 13 * self.tc(),
                 }
                 self.t_avg = filter_settling[self.order]
 
