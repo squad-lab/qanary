@@ -7,8 +7,6 @@ name = "qcutils"
 version = "0.1.0"
 authors = [
   { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
-  { name="Lino Visser", email="l.visser@fz-juelich.de" },
-  { name="Niels Focke", email="n.focke@fz-juelich.de" },
 ]
 description = "Sweep and measurement utilities for qcodes"
 readme = "README.md"
@@ -20,7 +18,8 @@ classifiers = [
 ]
 keywords = ["qcodes"]
 dependencies = [
-  "qcodes"
+  "qcodes",
+  "scipy",
 ]
 
 
