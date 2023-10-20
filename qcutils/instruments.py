@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 import numpy as np
 
+
 class ShellInstrument(Instrument):
     def __init__(self, name: str, parameters: dict, **kwargs) -> None:
         """Shell instrument class for defining qcodes parameters from instruments with oddly behaving parameters, or to define new instruments with custom parameters
@@ -238,6 +239,7 @@ class Delay(Instrument):
         self.num_time += 1
         sleep(self.delay)
 
+
 class BaselSP1004a(VisaInstrument):
     """
     A driver for Basel Preamp's (SP1004a) Remote Instrument - Model SP1004a.
@@ -261,7 +263,7 @@ class BaselSP1004a(VisaInstrument):
         self.add_parameter(
             "gain",
             label="Gain",
-            unit="V/V",
+            unit="",
             set_cmd=self._set_gain,
             get_cmd=self._get_gain,
             vals=vals.Enum(1e2, 1e3, 1e4),
@@ -288,9 +290,12 @@ class BaselSP1004a(VisaInstrument):
         self.add_parameter(
             "overload_status", label="Overload Status", set_cmd=False, get_cmd="GET O"
         )
-        
+
         self.add_parameter(
-            "vin_offset_compensated", label="Overload Status", set_cmd=False, get_cmd="GET C"
+            "vin_offset_compensated",
+            label="Overload Status",
+            set_cmd=False,
+            get_cmd="GET C",
         )
 
     def get_idn(self) -> dict[str, Optional[str]]:
@@ -304,8 +309,6 @@ class BaselSP1004a(VisaInstrument):
             "serial": serial,
             "firmware": firmware,
         }
-
-
 
     def _set_gain(self, value: float) -> None:
         r = self.ask(f"SET G 1E{int(np.log10(value))}")
