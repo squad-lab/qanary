@@ -33,7 +33,9 @@ class Lockin(Instrument):
         serial: serial number of the lockin amplifier, only required for MFLI
     """
 
-    def __init__(self, name, address, device="MFLI", serial=None, *args, **kwargs):
+    def __init__(
+        self, name, address, device="MFLI", serial=None, *args, **kwargs
+    ) -> None:
         super().__init__(f"wrapper_{name}", **kwargs)
         if serial:
             try:
@@ -126,7 +128,7 @@ class Lockin(Instrument):
             self.tc = self.core.time_constant
             self.order = self.filter_slope
 
-    def delay(self, order, tc):
+    def delay(self, order, tc) -> float:
         filter_settling = {
             1: 3 * tc,
             2: 4.7 * tc,
@@ -139,14 +141,17 @@ class Lockin(Instrument):
         }
         return filter_settling[int(order)]
 
-    def r_val(self, demods=0):
+    def r_val(self, demods=0) -> float:
         return abs(
             self.core.demods[demods].sample()["x"][0]
             + 1j * self.core.demods[demods].sample()["y"][0]
         )
 
-    def p_val(self, demods=0):
+    def p_val(self, demods=0) -> float:
         return self.core.demods[demods].sample()["phase"][0]
+
+    def get_idn(self) -> dict:
+        return self.core.get_idn()
 
     def __getattr__(self, name):
         try:
@@ -219,6 +224,15 @@ class Conductance(Instrument):
     def get_conductance(self):
         sleep(self.delay)
         return (1 / self.get_resistance()) * (1 / self.cond_quantum)
+
+    def get_idn(self) -> dict:
+        idn_dict = {
+            "vendor": "Conductance Wrapper",
+            "model": "1.0",
+            "serial": "1.0",
+            "firmware": 1,
+        }
+        return idn_dict
 
 
 class Delay(Instrument):
