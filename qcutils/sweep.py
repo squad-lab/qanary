@@ -7,6 +7,10 @@ import numpy as np
 from typing import Union, Sequence, Callable
 from threading import Thread
 from time import sleep
+from tqdm import tqdm
+from tabulate import tabulate
+
+bar = None
 
 
 class Sweep:
@@ -18,6 +22,7 @@ class Sweep:
         num: Union[int, float] = 0.0,
         step: Union[int, float] = 0.0,
         delay: float = 0.0,
+        start_delay: float = 0.0,
         ramprate: float = 0.0,
     ) -> None:
         """Sweep class to define a parameter sweep
@@ -44,27 +49,7 @@ class Sweep:
         self.parameter = parameter
         self.values = np.linspace(start, stop, num)
         self.delay = delay
-
-
-class TimeSweep:
-    def __init__(
-        self,
-        parameter: Parameter,
-        duration: Union[int, float],
-        step: Union[int, float],
-    ) -> None:
-        """Sweep class to define a parameter sweep
-
-        Args:
-            parameter: qcodes parameter(s) of clock e.g. clock.time()
-            duration: overall length of the time sweep
-            step: delay / dwell time between points
-        """
-
-        num = int(abs(duration) / step)
-
-        self.parameter = parameter
-        self.values = np.linspace(0, duration, num)
+        self.start_delay = start_delay
 
 
 class CircularSweep:
@@ -193,7 +178,6 @@ def _stepper(
     sweep_cache: Sequence,
     datasaver,
     interrupt: bool,
-    offset: float,
 ):
     """Recursive stepper function for generating the for loops required to sweep measurements
 
@@ -207,52 +191,26 @@ def _stepper(
         interrupt: Boolean to enable custom stops
     """
     sweep = sweep_list[len(sweep_list) - depth]
-    sweep_step = sweep.values[1] - sweep.values[0]
-    if isinstance(sweep, TimeSweep):
-        timesweep_start = sweep.parameter()
 
-    for sweep_point in sweep.values:
+    # leveling the playing field to make every case a list
+    if not isinstance(sweep.parameter, Sequence):
+        sweep.parameter = [sweep.parameter]
+
+    for sweep_point, idx in enumerate(sweep.values):
+        if idx == 0:
+            sleep(sweep.start_delay)
+
         if interrupt:
             raise InterruptedError("Interrupt recieved from measurement parameters")
 
-        if isinstance(sweep, TimeSweep):
-            while True:
-                if timesweep_start + sweep_point < sweep.parameter():
-                    break
-            sweep_cache[plot_independents.index(sweep.parameter)] = (
-                sweep.parameter() - offset
-            )
-
         else:
-            if isinstance(sweep.parameter, Sequence):
-                for param in sweep.parameter:
-                    param(sweep_point)
-                    while True:
-                        if abs(param() - sweep_point) < 0.01 * abs(sweep_step):
-                            break
-                    if param in plot_independents:
-                        sweep_cache[plot_independents.index(param)] = (
-                            sweep_point - offset
-                        )
-
-            else:
-                sweep.parameter(sweep_point)
-                while True:
-                    if abs(sweep.parameter() - sweep_point) < 0.01 * abs(sweep_step):
-                        break
-                sweep_cache[plot_independents.index(sweep.parameter)] = (
-                    sweep_point - offset
-                )
+            for param in sweep.parameter:
+                # set the parameter to the setpoint
+                param(sweep_point)
+                if param in plot_independents:
+                    sweep_cache[plot_independents.index(param)] = sweep_point
 
             sleep(sweep.delay)
-
-        if depth == 1:
-            datasaver.add_result(
-                *(
-                    list(zip(plot_independents, sweep_cache))
-                    + [(dependent, dependent()) for dependent in dependents]
-                )
-            )
 
         if depth > 1:
             _stepper(
@@ -263,18 +221,25 @@ def _stepper(
                 sweep_cache,
                 datasaver,
                 interrupt,
-                offset,
             )
-    return
+
+        elif depth == 1:
+            datasaver.add_result(
+                *(
+                    list(zip(plot_independents, sweep_cache))
+                    + [(dependent, dependent()) for dependent in dependents]
+                )
+            )
+            global bar
+            bar.update(1)
+    return datasaver
 
 
 def measure(
-    sweeps: Union[Sweep, CircularSweep, TimeSweep, Sequence[Sweep]],
+    sweeps: Union[Sweep, CircularSweep, Sequence[Sweep]],
     parameters: dict,
     experiment: Experiment,
     measurement: str,
-    write_period: float = 0.1,
-    offset: float = 0.0,
     interrupt: Callable = None,
     rampdown_on_interrupt=False,
 ):
@@ -284,28 +249,45 @@ def measure(
         sweeps: Sequence of sweeps to be measured, can be a single element list or tuple too
         parameters: Dictionary of dependent parameters that depend on all independent parameters by default, otherwise depend on the independents key of the dictionary, example"
         meas_params = {
-        "parameters": [dlockin.r, dlockin.p],
+        "parameters": [lockin.r, lockin.p],
         "independents": [ch1, ch2]
         }
         experiment: qcodes Experiment to write to
         measurement: Name of the measurement
-        write_period: Write period for the buffered writes to the database
-        offset: Measurement offset on the independent variable
         interrupt: Boolean interrupting the measurement when true
         rampdown_on_interrupt: Rampdown on keyboard interrupt or errors
 
     Returns:
         dataset: qcodes dataset, if no interrupts have been issued
         1: If the measurement was interrupted
+
+    TBD:
+        * Eliminate the need for defining independent sweep parameters, just take them from the Sweep object
     """
     meas = Measurement(exp=experiment, name=measurement)
-    meas.write_period = write_period
-
+    meas.write_period = 5e-3
     independents = []
+    sweep_metadata = []
+    sweep_metadata_headers = [
+        "Independent(s)",
+        "Range",
+        "Number of Points",
+        "Delay (s)",
+    ]
     if not isinstance(sweeps, Sequence):
         sweeps = [sweeps]
 
+    # allowing for multiple sweeps to be done one after the other in the same measurement
     for sweep in sweeps:
+        sweep_metadata.append(
+            [
+                sweep.parameter,
+                f"{min(sweep.values)}-{max(sweep.values)}",
+                len(sweep.values),
+                sweep.delay,
+            ]
+        )
+
         if isinstance(sweep.parameter, Sequence):
             independents.append(sweep.parameter[0])
         else:
@@ -325,7 +307,20 @@ def measure(
         meas.register_parameter(dependent, setpoints=tuple(plot_independents))
 
     try:
+        total_points = 1
+        for sweep in sweeps:
+            total_points *= len(sweep.values)
+
         with meas.run() as datasaver:
+            print(
+                tabulate(
+                    sweep_metadata,
+                    headers=sweep_metadata_headers,
+                ),
+                "\n",
+            )
+            global bar
+            bar = tqdm(total=total_points, ascii="*ᗧⵔ⏺", desc="Measurement Progress")
             datasaver = _stepper(
                 depth=len(sweeps),
                 sweep_list=sweeps,
@@ -334,12 +329,12 @@ def measure(
                 sweep_cache=[0.0] * len(plot_independents),
                 datasaver=datasaver,
                 interrupt=interrupt,
-                offset=offset,
             )
-        dataset = datasaver.dataset
-        return dataset
+            bar.close()
+            dataset = datasaver.dataset
+            return
 
-    except:
+    except KeyboardInterrupt:
         if rampdown_on_interrupt:
             rampdown_sweeps = [
                 Sweep(sweep.parameter, sweep.parameter(), 0.0, num=100, delay=1e-2)
