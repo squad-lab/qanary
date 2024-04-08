@@ -177,7 +177,7 @@ def _stepper(
     dependents: Sequence,
     sweep_cache: Sequence,
     datasaver,
-    interrupt: bool,
+    interrupt: Callable,
 ):
     """Recursive stepper function for generating the for loops required to sweep measurements
 
@@ -196,11 +196,11 @@ def _stepper(
     if not isinstance(sweep.parameter, Sequence):
         sweep.parameter = [sweep.parameter]
 
-    for sweep_point, idx in enumerate(sweep.values):
+    for idx, sweep_point in enumerate(sweep.values):
         if idx == 0:
             sleep(sweep.start_delay)
 
-        if interrupt:
+        if interrupt():
             raise InterruptedError("Interrupt recieved from measurement parameters")
 
         else:
