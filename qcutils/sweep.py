@@ -320,8 +320,8 @@ def measure(
                 "\n",
             )
             global bar
-            bar = tqdm(total=total_points, ascii="*ᗧⵔ⏺", desc="Measurement Progress")
-            datasaver = _stepper(
+            bar = tqdm(total=total_points, ascii="*ᗧⵔ●︎", desc="Measurement Progress")
+            _stepper(
                 depth=len(sweeps),
                 sweep_list=sweeps,
                 plot_independents=plot_independents,
@@ -331,7 +331,6 @@ def measure(
                 interrupt=interrupt,
             )
             bar.close()
-            dataset = datasaver.dataset
             return
 
     except KeyboardInterrupt:
