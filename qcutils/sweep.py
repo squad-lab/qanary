@@ -62,6 +62,7 @@ class CircularSweep:
         step: Union[int, float] = 0.0,
         delay: float = 0.0,
         ramprate: float = 0.0,
+        repetitions: int = 1,
     ) -> None:
         """Sweep class to define a circular parameter sweep, where the parameter goes up and comes down
 
@@ -73,6 +74,7 @@ class CircularSweep:
             num: number of points
             delay: delay / dwell time between points
             ramprate: ramp rate
+            repetitions: number of times to repeat the sweep
         """
         if not (step or num):
             raise ValueError("Either one of step or num has to be set")
@@ -86,7 +88,11 @@ class CircularSweep:
 
         self.parameter = parameter
         self.values = np.append(
-            np.linspace(start, stop, num), np.linspace(start, stop, num)[::-1]
+            np.tile(
+                np.linspace(start, stop, num),
+                np.linspace(start, stop, num)[::-1],
+                reps=repetitions,
+            )
         )
         self.delay = delay
 
@@ -240,7 +246,7 @@ def measure(
     parameters: dict,
     experiment: Experiment,
     measurement: str,
-    interrupt: Callable = None,
+    interrupt: Callable = lambda: None,
     rampdown_on_interrupt=False,
 ):
     """Measurement function to run a qcodes sweep based measurement
