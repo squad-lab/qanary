@@ -72,4 +72,6 @@ config.yaml
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-test*
+.DS_Store
+test_db/
+test/

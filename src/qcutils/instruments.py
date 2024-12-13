@@ -1,11 +1,17 @@
-from qcodes import Instrument
-from qcodes.instrument import VisaInstrument
-from qcodes import validators as vals
-
+import warnings
 from time import sleep
 from typing import Any, Optional
 
 import numpy as np
+from qcodes import Instrument
+from qcodes import validators as vals
+from qcodes.instrument import VisaInstrument
+
+warnings.warn(
+    "Please use https://git.squad-lab.org/squad-lab/measurements/drivers instead",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class ShellInstrument(Instrument):
@@ -39,7 +45,7 @@ class Lockin(Instrument):
         super().__init__(f"wrapper_{name}", **kwargs)
         if serial:
             try:
-                import zhinst.qcodes
+                pass
             except ImportError:
                 raise ImportError(f"Please install zhinst-qcodes to use the {device}")
 

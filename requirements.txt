@@ -1,3 +1,0 @@
-qcodes
-scipy
-pyqt5
