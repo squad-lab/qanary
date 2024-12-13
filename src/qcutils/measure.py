@@ -252,7 +252,7 @@ class Measurement:
         # Get instrument snapshots for metadata
         independents = []
         instruments_snapshot = {
-            inst.name: str(inst.snapshot()) for inst in self.station.instruments
+            inst.name: inst.snapshot() for inst in self.station.instruments
         }
         parameters_snapshot = {
             param.name: {
