@@ -288,12 +288,11 @@ class Measurement:
                 ]
             )
 
+        swm_list = [dict(zip(sweep_metadata_headers, swm)) for swm in sweep_metadata]
         meta = {
-            "Instruments Snapshot": str(instruments_snapshot),
-            "Parameters Snapshot": str(parameters_snapshot),
-            "Sweeps": [
-                dict(zip(sweep_metadata_headers, swm)) for swm in sweep_metadata
-            ],
+            "Instruments Snapshot": json.dumps(instruments_snapshot),
+            "Parameters Snapshot": json.dumps(parameters_snapshot),
+            "Sweeps": json.dumps({swm["Independent(s)"]: swm for swm in swm_list}),
         }
         self.arr = self._make_dataset(sweeps, dependents)
         self.arr.attrs.update(meta)
