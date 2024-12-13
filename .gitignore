@@ -45,6 +45,7 @@ ipython_config.py
 bf/
 .env
 .venv
+.nenv
 env/
 venv/
 ENV/
