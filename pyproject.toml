@@ -1,16 +1,20 @@
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [project]
 name = "qcutils"
-version = "0.2.0"
+version = "0.3.0"
 authors = [
   { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
 ]
 description = "Sweep and measurement utilities for qcodes"
 readme = "README.md"
-requires-python = ">=3.9"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU Affero General Public License v3",
@@ -18,10 +22,13 @@ classifiers = [
 ]
 keywords = ["qcodes"]
 dependencies = [
+  "zarr",
   "qcodes",
   "scipy",
+  "python-gitlab",
+  "gitpython",
+  "checksumdir"
 ]
-
 
 [project.urls]
 "Homepage" = "https://gitlab.com/squad-lab/qcutils"
