@@ -111,6 +111,7 @@ class Measurement:
         self.data = f"{self.datalogging}/{self.id}.zarr"
         self.arr = None
         self.station = station
+        logging.info(f"Measurement Location: {self.data}")
 
     def _make_dataarray(self, sweeps, dependent):
         """Create a dataarray for the dependent parameter
@@ -368,6 +369,7 @@ def run(
     data_location: str = "./test/",
     interrupt: Callable = lambda: None,
     rampdown_on_interrupt=False,
+    location_return=False,
 ):
     """Helper function to run a measurement, refer to the Measuremment class for more details"""
     if not station:
@@ -384,3 +386,5 @@ def run(
     )
 
     meas.run(sweeps, dependents, interrupt, rampdown_on_interrupt)
+    if location_return:
+        return meas.data

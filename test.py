@@ -39,5 +39,6 @@ measure.run(
     experiment_name="test_measurement",
     station=st,
     metadata=extra_metadata,
+    location_return=True,
 )
 # %%
