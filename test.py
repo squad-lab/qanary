@@ -28,6 +28,7 @@ dependents = [dmm_v]
 gate_sweep1 = Sweep(dac_ch1, 0, 1, num=40, delay=1e-6, start_delay=0)
 gate_sweep2 = Sweep(dac_ch2, 0, 1, num=50, delay=1e-6, start_delay=0)
 
+extra_metadata = {"test": "test", "test2": 2}
 # %%
 measure.run(
     [gate_sweep1, gate_sweep2],
@@ -37,5 +38,6 @@ measure.run(
     sample_name="test_sample",
     experiment_name="test_measurement",
     station=st,
+    metadata=extra_metadata,
 )
 # %%

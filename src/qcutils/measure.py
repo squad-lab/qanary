@@ -70,6 +70,7 @@ class Measurement:
         experiment_name: str,
         station: Station,
         data_location: str,
+        metadata: dict,
         save_interval: float = 0.1,
         git_repo: str = "~/.measurement-hashes",
     ):
@@ -88,6 +89,7 @@ class Measurement:
         self.device_type = device_type
         self.sample_name = sample_name
         self.experiment = experiment_name
+        self.extra_metadata = metadata
 
         self.id = f"1-{uuid.uuid4()}"
         self.datalogging = (
@@ -293,6 +295,7 @@ class Measurement:
             "Instruments Snapshot": json.dumps(instruments_snapshot),
             "Parameters Snapshot": json.dumps(parameters_snapshot),
             "Sweeps": json.dumps({swm["Independent(s)"]: swm for swm in swm_list}),
+            "Extra Metadata": json.dumps(self.extra_metadata),
         }
         self.arr = self._make_dataset(sweeps, dependents)
         self.arr.attrs.update(meta)
@@ -360,6 +363,7 @@ def run(
     device_type: str,
     sample_name: str,
     experiment_name: str,
+    metadata: dict = {},
     station: Station = None,
     data_location: str = "./test/",
     interrupt: Callable = lambda: None,
@@ -376,6 +380,7 @@ def run(
         experiment_name=experiment_name,
         station=station,
         data_location=data_location,
+        metadata=metadata,
     )
 
     meas.run(sweeps, dependents, interrupt, rampdown_on_interrupt)
