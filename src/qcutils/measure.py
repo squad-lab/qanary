@@ -6,7 +6,7 @@ import socket
 import subprocess
 import sys
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Sequence, Union
 from checksumdir import dirhash
 
@@ -113,6 +113,21 @@ class Measurement:
         self.station = station
         logging.info(f"Measurement Location: {self.data}")
 
+    def get_installed_packages(self):
+        try:
+            pip_output = subprocess.check_output(
+                [sys.executable, "-m", "pip", "freeze"]
+            ).decode()
+        except subprocess.CalledProcessError as e:
+            pip_output = ""
+
+        try:
+            uv_output = subprocess.check_output(["uv", "pip", "freeze"]).decode()
+        except subprocess.CalledProcessError as e:
+            uv_output = ""
+
+        return pip_output + uv_output
+
     def _make_dataarray(self, sweeps, dependent):
         """Create a dataarray for the dependent parameter
 
@@ -169,9 +184,7 @@ class Measurement:
             "Device Type": self.device_type,
             "Sample Name": self.sample_name,
             "Experiment Name": self.experiment,
-            "Requirements": (
-                subprocess.check_output([sys.executable, "-m", "pip", "freeze"])
-            ).decode(),
+            "Requirements": self.get_installed_packages(),
             "Code Archive": str(code_archive),
         }
 
@@ -197,14 +210,14 @@ class Measurement:
             dataset (xarray.Dataset): xarray dataset
             data_hash (str): Hash of the data
         """
-        git_ssh_identity_file = os.path.expanduser("~/.ssh/id_rsa")
-        git_ssh_cmd = "ssh -i %s" % git_ssh_identity_file
+        git_ssh_identity_file = str(PurePosixPath(Path.home() / ".ssh" / "id_rsa"))
+        git_ssh_cmd = f"ssh -i {git_ssh_identity_file}"
 
-        if not os.path.exists(f"{self.git_repo}/.git"):
+        if not os.path.exists(Path("~/.measurement-hashes/.git").expanduser()):
             logging.info("Cloning the measurement-hashes repository")
             Repo.clone_from(
-                "git@git.pgi.fz-juelich.de:squad-lab/hashes.git",
-                self.git_repo,
+                url="git@git.pgi.fz-juelich.de:squad-lab/hashes.git",
+                to_path=self.git_repo,
                 single_branch=True,
                 branch=self.cryostat,
                 env=dict(GIT_SSH_COMMAND=git_ssh_cmd),

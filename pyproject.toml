@@ -1,20 +1,13 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [project]
 name = "qcutils"
-version = "0.3.0"
+version = "0.4.0"
 authors = [
   { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
 ]
 description = "Sweep and measurement utilities for qcodes"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.11"
+requires-python = ">=3.12,<4"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU Affero General Public License v3",
@@ -22,14 +15,37 @@ classifiers = [
 ]
 keywords = ["qcodes"]
 dependencies = [
-  "zarr",
-  "qcodes",
-  "scipy",
-  "python-gitlab",
-  "gitpython",
-  "checksumdir"
+  "checksumdir>=1.2.0",
+  "gitpython>=3.1.44",
+  "qcodes==0.45",
+  "scipy>=1.15.2",
+  "setuptools>=78.1.0",
+  "zarr>=2,<3",
+  "zhinst>=25.1.0",
+  "zhinst-qcodes>=0.6.0",
 ]
 
 [project.urls]
 "Homepage" = "https://gitlab.com/squad-lab/qcutils"
 "Bug Tracker" = "https://gitlab.com/squad-lab/qcutils/-/issues"
+
+[dependency-groups]
+dev = [
+    "qcutils",
+]
+
+[tool.uv] 
+package = true
+
+[tool.uv.sources]
+qcutils = { workspace = true }
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = true
+packages = [
+    { include = "qcutils", from = "src" },
+]
