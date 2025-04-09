@@ -23,22 +23,24 @@ dac_ch2 = st.add_parameter("dac_ch2", "Voltage 2", dac.ch2)
 dmm_v = st.add_parameter("dmm_v", "Voltmeter", dmm.v1)
 
 # %%
-dependents = [dmm_v]
-
 gate_sweep1 = Sweep(dac_ch1, 0, 1, num=40, delay=1e-6, start_delay=0)
 gate_sweep2 = Sweep(dac_ch2, 0, 1, num=50, delay=1e-6, start_delay=0)
 
 extra_metadata = {"test": "test", "test2": 2}
+run_dict = {
+    "dependents": [dmm_v],
+    "wafer_id": "test_wafer",
+    "device_type": "test_device",
+    "sample_name": "test_sample",
+    "experiment_name": "test_measurement",
+    "station": st,
+    "metadata": extra_metadata,
+    "location_return": True,
+    "data_location": "D:/Measurement/Data/",
+}
 # %%
 measure.run(
     [gate_sweep1, gate_sweep2],
-    dependents,
-    wafer_id="test_wafer",
-    device_type="test_device",
-    sample_name="test_sample",
-    experiment_name="test_measurement",
-    station=st,
-    metadata=extra_metadata,
-    location_return=True,
+    **run_dict,
 )
 # %%
