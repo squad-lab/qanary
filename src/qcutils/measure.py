@@ -232,7 +232,7 @@ class Measurement:
                 repo.git.branch(d=f"{self.cryostat}")
                 repo.git.checkout(b=f"{self.cryostat}")
         else:
-            logging.info(f"Checking out to branch:0 {self.cryostat}")
+            logging.info(f"Checking out to branch: {self.cryostat}")
             repo.git.checkout(f"{self.cryostat}")
 
         hash_location = f"{self.git_repo}/{self.wafer_id}/{self.device_type}/{self.sample_name}/{self.experiment}"
@@ -298,7 +298,7 @@ class Measurement:
             sweep_metadata.append(
                 [
                     ",".join([param.label for param in sweep.parameter]),
-                    f"{min(sweep.values)}-{max(sweep.values)}",
+                    f"{sweep.values[0]} to {sweep.values[-1]}",
                     len(sweep.values),
                     sweep.delay,
                 ]
