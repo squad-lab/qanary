@@ -24,6 +24,7 @@ dependencies = [
   "numcodecs==0.15",
   "zhinst>=25.1.0",
   "zhinst-qcodes>=0.6.0",
+  "pillow>=11.2.1",
 ]
 
 [project.urls]
