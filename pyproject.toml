@@ -25,6 +25,8 @@ dependencies = [
   "zhinst>=25.1.0",
   "zhinst-qcodes>=0.6.0",
   "pillow>=11.2.1",
+  "drivers",
+  "qcodes-contrib-drivers>=0.23.0",
 ]
 
 [project.urls]
@@ -41,6 +43,7 @@ package = true
 
 [tool.uv.sources]
 qcutils = { workspace = true }
+drivers = { git = "https://gitlab.com/squad-lab/measurements/drivers" }
 
 [build-system]
 requires = ["poetry-core"]
