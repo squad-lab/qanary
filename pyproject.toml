@@ -27,6 +27,8 @@ dependencies = [
   "pillow>=11.2.1",
   "drivers",
   "qcodes-contrib-drivers>=0.23.0",
+  "tool>=0.8.0",
+  "ruff>=0.11.6",
 ]
 
 [project.urls]

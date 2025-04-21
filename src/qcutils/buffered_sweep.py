@@ -39,29 +39,10 @@ from qcutils.sweep import Sweep
 # }
 
 
-def register_buffered_dependent():
-    pass
-
-
-class BufferedDependent:
-    """
-    Class to define a timed buffered measurement.
-    """
-
-    def __init__(self, dependent: Union[Parameter, Sequence[Parameter]]):
-        self.buffered = True
-        if isinstance(dependent, Sequence):
-            instruments = [dep.instrument for dep in dependent]
-            assert (
-                len(set(instruments)) == 1
-            ), "All elements of dependent must be from the same instrument"
-            self.dependent = dependent
-        else:
-            self.dependent = [dependent]
-
-
 class BufferedNodeBase:
-    def __init__(self, sweep: Sweep, dependent: BufferedDependent) -> None:
+    def __init__(
+        self, sweep: Sweep, dependent: Union[Parameter, Sequence[Parameter]]
+    ) -> None:
         """
         Base class for buffered sweep nodes. This class is a node of the buffered sweep tree. Can be used in three ways:
         1. As a node in a buffered sweep tree with a sweep and a dependent, where the device is both sweeping and measuring.
@@ -79,9 +60,9 @@ class BufferedNodeBase:
             self.sweep = sweep
             self.parameters = sweep.parameter
             instruments = [parameter.instrument for parameter in self.parameters]
-            assert (
-                len(set(instruments)) == 1
-            ), "All parameters of the buffered sweep must be from the same instrument"
+            assert len(set(instruments)) == 1, (
+                "All parameters of the buffered sweep must be from the same instrument"
+            )
 
             self.core = instruments[0]
             self.core.__init__()
@@ -97,11 +78,14 @@ class BufferedNodeBase:
             self.endnode = True
 
         if dependent:
-            self.dependents = dependent
+            if not isinstance(dependent, Sequence):
+                self.dependents = [dependent]
+            else:
+                self.dependents = dependent
             instruments = [dependent.instrument for dependent in self.dependents]
-            assert (
-                len(set(instruments)) == 1
-            ), "All dependents of the buffered node must be from the same instrument"
+            assert len(set(instruments)) == 1, (
+                "All dependents of the buffered node must be from the same instrument"
+            )
 
             self.core = instruments[0]
             self.core.__init__()
@@ -117,7 +101,11 @@ class BufferedNodeBase:
 
 class NodeMFLI(BufferedNodeBase):
     def __init__(
-        self, dependent: BufferedDependent, input_trigger: int | float, *args, **kwargs
+        self,
+        dependent: Union[Parameter, Sequence[Parameter]],
+        input_trigger: int | float,
+        *args,
+        **kwargs,
     ):
         """
         MFLI as a node in the buffered sweep tree
@@ -153,7 +141,9 @@ class NodeMFLI(BufferedNodeBase):
 
 
 class NodeKeysightDMM(BufferedNodeBase):
-    def __init__(self, dependent: BufferedDependent, *args, **kwargs):
+    def __init__(
+        self, dependent: Union[Parameter, Sequence[Parameter]], *args, **kwargs
+    ):
         super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
 
     def register_dependent(self, max_duration: float = 1e-3):
@@ -161,30 +151,50 @@ class NodeKeysightDMM(BufferedNodeBase):
 
 
 class NodeQDAC2(BufferedNodeBase):
-    def __init__(self, sweep: Union[Sweep, Sequence[Sweep]], dependent: BufferedDependent, output_triggers: dict, *args, **kwargs):
+    def __init__(
+        self,
+        sweep: Union[Sweep, Sequence[Sweep]],
+        dependent: Union[Parameter, Sequence[Parameter]],
+        output_trigger: dict,
+        *args,
+        **kwargs,
+    ):
+        """
+        Args:
+            sweep (Sweep or Sequence[Sweep]): The sweep object to be used in the buffered sweep tree. Can be a 1D or 2D sweep.
+            dependent (Union[Parameter, Sequence[Parameter]]): Dependent parameter to be measured. Only read_current_A is supported.
+            output_trigger (dict): Dictionary of output triggers. The keys are the names of the output triggers and the values are physical trigger port numbers.
+        """
         super().__init__(sweep=sweep, dependent=dependent, *args, **kwargs)
         self.contacts = {}
         if isinstance(sweep, Sequence):
             # 2D sweep
             assert len(sweep) <= 2, "Maximum 2D sweep supported"
             for sw in sweep:
-                assert len(sw.parameter) == 1, "Only one parameter per 2D sweep loop supported"
+                assert len(sw.parameter) == 1, (
+                    "Only one parameter per 2D sweep loop supported"
+                )
             inner_sweep = sweep[0]
             outer_sweep = sweep[1]
             inner_voltages = inner_sweep.values
             outer_voltages = outer_sweep.values
             inner_step_time_s = inner_sweep.delay
             outer_step_time_s = outer_sweep.delay
+            self.num_points = inner_sweep.num * outer_sweep.num
+            self.triggers = output_trigger
+            self.dims = 2
 
-            self.output_triggers = output_triggers
-            
             self.contacts = {
-                inner_sweep.parameter[0].name: inner_sweep.parameter[0].underlying_instrument()._channum,
-                outer_sweep.parameter[0].name: outer_sweep.parameter[0].underlying_instrument()._channum,
+                inner_sweep.parameter[0].name: inner_sweep.parameter[0]
+                .underlying_instrument()
+                ._channum,
+                outer_sweep.parameter[0].name: outer_sweep.parameter[0]
+                .underlying_instrument()
+                ._channum,
             }
             self.arrangement = self.core.arrange(
                 contacts=self.contacts,
-                output_triggers=self.output_triggers,
+                output_triggers=self.triggers,
             )
             self._qdac_sweep = self.arrangement.virtual_sweep2d(
                 inner_contact=inner_sweep.parameter[0].name,
@@ -193,8 +203,7 @@ class NodeQDAC2(BufferedNodeBase):
                 outer_voltages=outer_voltages,
                 inner_step_time_s=inner_step_time_s,
                 outer_step_time_s=outer_step_time_s,
-                inner_step_trigger=list(self.output_triggers.keys())[0],
-                outer_step_trigger=list(self.output_triggers.keys())[1],
+                inner_step_trigger=list(self.triggers.keys())[0],
             )
 
         else:
@@ -202,29 +211,29 @@ class NodeQDAC2(BufferedNodeBase):
             # virtual detune for multiparameter sweep
             start = sweep.start
             stop = sweep.stop
-            num = sweep.num
+            self.num_points = sweep.num
             delay = sweep.delay
+            self.dims = 1
 
             self.contacts = {}
             for param in sweep.parameter:
                 self.contacts[param.name] = param.underlying_instrument()._channum
-            
-            self.output_triggers = output_triggers
+
+            self.triggers = output_trigger
             self.arrangement = self.core.arrange(
                 contacts=self.contacts,
-                output_triggers=self.output_triggers,
+                output_triggers=self.triggers,
             )
 
             self._qdac_sweep = self.arrangement.virtual_detune(
                 contacts=list(self.contacts.keys()),
-                start_V=[start]*len(self.contacts),
-                stop_V=[stop]*len(self.contacts),
-                steps=num,
-                step_trigger=list(self.output_triggers.keys()),
+                start_V=[start] * len(self.contacts),
+                stop_V=[stop] * len(self.contacts),
+                steps=self.num_points,
+                step_trigger=list(self.triggers.keys())[0],
                 step_time_s=delay,
-                repititions=1
-                )
-
+                repititions=1,
+            )
 
     def run_sweep(self):
         """
@@ -232,8 +241,31 @@ class NodeQDAC2(BufferedNodeBase):
         """
         self._qdac_sweep.start()
 
-    def register_dependent(self, max_duration: float = 1e-3):
-        pass
+    def register_dependent(self, step_time: int | float):
+        """
+        Register the measurement with the QDAC2
+
+        Args:
+            step_time (int or float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
+        """
+        # if the device has sweeps set, then trigger by internal trigger
+        # if the device is acting as an end node, then trigger by external trigger
+        for dependent in self.dependents:
+            assert dependent.name == "read_current_A", (
+                "Only read_current_A is supported as a dependent for QDAC2"
+            )
+
+        if self.sweepnode:
+            # internal trigger
+            for dependent in self.dependents:
+                dependent.underlying_instrument().clear_measurements()
+                meas = dependent.underlying_instrument().measurement(aperture_s=step_time)
+                meas.start_on(self.arrangement.get_trigger_by_name(list(self.triggers.keys())[0]))
+        elif self.endnode:
+            # external trigger
+            raise NotImplementedError("End node not implemented for QDAC2")
+
+        
 
 
 def _parse_bufsweep_tree(
