@@ -117,7 +117,7 @@ class BufferedNodeBase:
 
 class NodeMFLI(BufferedNodeBase):
     def __init__(
-        self, dependent: BufferedDependent, trigger: int | float, *args, **kwargs
+        self, dependent: BufferedDependent, input_trigger: int | float, *args, **kwargs
     ):
         """
         MFLI as a node in the buffered sweep tree
@@ -129,7 +129,7 @@ class NodeMFLI(BufferedNodeBase):
         """
         super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
         self.session = self.core.session
-        self.trigger = trigger
+        self.input_trigger = input_trigger
 
     def register_dependent(self, max_duration: float = 1e-3):
         """
@@ -161,8 +161,76 @@ class NodeKeysightDMM(BufferedNodeBase):
 
 
 class NodeQDAC2(BufferedNodeBase):
-    def __init__(self, dependent: BufferedDependent, *args, **kwargs):
-        super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
+    def __init__(self, sweep: Union[Sweep, Sequence[Sweep]], dependent: BufferedDependent, output_triggers: dict, *args, **kwargs):
+        super().__init__(sweep=sweep, dependent=dependent, *args, **kwargs)
+        self.contacts = {}
+        if isinstance(sweep, Sequence):
+            # 2D sweep
+            assert len(sweep) <= 2, "Maximum 2D sweep supported"
+            for sw in sweep:
+                assert len(sw.parameter) == 1, "Only one parameter per 2D sweep loop supported"
+            inner_sweep = sweep[0]
+            outer_sweep = sweep[1]
+            inner_voltages = inner_sweep.values
+            outer_voltages = outer_sweep.values
+            inner_step_time_s = inner_sweep.delay
+            outer_step_time_s = outer_sweep.delay
+
+            self.output_triggers = output_triggers
+            
+            self.contacts = {
+                inner_sweep.parameter[0].name: inner_sweep.parameter[0].underlying_instrument()._channum,
+                outer_sweep.parameter[0].name: outer_sweep.parameter[0].underlying_instrument()._channum,
+            }
+            self.arrangement = self.core.arrange(
+                contacts=self.contacts,
+                output_triggers=self.output_triggers,
+            )
+            self._qdac_sweep = self.arrangement.virtual_sweep2d(
+                inner_contact=inner_sweep.parameter[0].name,
+                outer_contact=outer_sweep.parameter[0].name,
+                inner_voltages=inner_voltages,
+                outer_voltages=outer_voltages,
+                inner_step_time_s=inner_step_time_s,
+                outer_step_time_s=outer_step_time_s,
+                inner_step_trigger=list(self.output_triggers.keys())[0],
+                outer_step_trigger=list(self.output_triggers.keys())[1],
+            )
+
+        else:
+            # 1D sweep
+            # virtual detune for multiparameter sweep
+            start = sweep.start
+            stop = sweep.stop
+            num = sweep.num
+            delay = sweep.delay
+
+            self.contacts = {}
+            for param in sweep.parameter:
+                self.contacts[param.name] = param.underlying_instrument()._channum
+            
+            self.output_triggers = output_triggers
+            self.arrangement = self.core.arrange(
+                contacts=self.contacts,
+                output_triggers=self.output_triggers,
+            )
+
+            self._qdac_sweep = self.arrangement.virtual_detune(
+                contacts=list(self.contacts.keys()),
+                start_V=[start]*len(self.contacts),
+                stop_V=[stop]*len(self.contacts),
+                steps=num,
+                step_trigger=list(self.output_triggers.keys()),
+                step_time_s=delay,
+                repititions=1
+                )
+
+
+    def run_sweep(self):
+        """
+        Run the buffered sweep.
+        """
+        self._qdac_sweep.start()
 
     def register_dependent(self, max_duration: float = 1e-3):
         pass
