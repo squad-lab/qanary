@@ -4,6 +4,7 @@ from qcodes_contrib_drivers.drivers.QDevil.QDAC2 import QDAC2
 from qcodes.instrument_drivers.Keysight import Keysight34461A
 from typing import Sequence, Union
 from zhinst.qcodes import MFLI
+import zhinst.core
 import numpy as np
 
 from qcutils.sweep import Sweep
@@ -116,28 +117,44 @@ class NodeMFLI(BufferedNodeBase):
             trigger (int | float): Trigger input for the MFLI. Either 1 or 2.
         """
         super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
-        self.session = self.core.session
+        #self.session = self.core.session
+        self.serial = self.core.serial
+        self.daq = zhinst.core.ziDAQServer('127.0.0.1', 8004, 6) 
+        self.daq_module = self.daq.dataAcquisitionModule()
         self.input_trigger = input_trigger
+        self.daq_module.set('preview', 1)
+        self.daq_module.set('device', self.serial)
+        self.daq_module.set('type', 6)
+        self.daq_module.set('triggernode', '/'+self.serial+'/demods/0/sample.TrigIn1') #needs to be changed to allow for arbitrary trigins on LIA side
+        self.daq_module.set('endless', 1)
+        self.daq_module.set('grid/mode', 2)
 
-    def register_dependent(self, step_time: int | float):
+    def register_dependent(self,sweep_points: int, step_time: int | float):
         """
         Register the measurement with the MFLI
 
         Args:
             max_duration (float): Maximum duration of the measurement in seconds. Depends on the preceeding sweep's step size.
         """
-        num_cols = 100
-        num_bursts = 1
-        daq = self.session.modules.daq
-        daq.device(self.core)
-        daq.type(1)
-        daq.edge(0)
-        daq.grid.mode(2)
-        daq.count(num_bursts)
-        daq.duration(step_time)
-        daq.grid.cols(num_cols)
+        self.daq_module.finish()
+        self.daq_module.unsubscribe('*')
+        
+        self.daq.setDouble('/'+self.serial+'/demods/0/timeconstant', step_time)
+        self.daq_module.set('grid/cols', sweep_points)
+        self.daq_module.set('duration', dependent.parameter.instrument.timeconstant*sweep_points)
+
         for dependent in self.dependents:
-            daq.subscribe(dependent)
+            self.daq_module.subscribe('/'+self.serial+dependent.parameter.zi_node+dependent._values[0]'.avg')
+
+    def fetch(self):
+        """
+        Fetch the measurement from the Zurich Instruments MFLI
+        Returns:
+            list: List of the measured values from all dependents
+        """
+        result = self.daq_module.read()
+        print(result)
+        #result[self.serial]
 
 
 class NodeKeysightDMM(BufferedNodeBase):
@@ -304,6 +321,7 @@ def _parse_bufsweep_tree(
         toplevel_node = buffered_sweep[list(buffered_sweep.keys())[0]]
 
     for node_idx, node in enumerate(buffered_sweep):
+        
         # # register node, sweep, and extra_parameters
         print(
             f"{indent}Node: {node.sweep.parameter}: {node.sweep.parameter.instrument.name}"
