@@ -60,9 +60,9 @@ class BufferedNodeBase:
             self.sweep = sweep
             self.parameters = sweep.parameter
             instruments = [parameter.instrument for parameter in self.parameters]
-            assert len(set(instruments)) == 1, (
-                "All parameters of the buffered sweep must be from the same instrument"
-            )
+            assert (
+                len(set(instruments)) == 1
+            ), "All parameters of the buffered sweep must be from the same instrument"
 
             self.core = instruments[0]
             self.core.__init__()
@@ -83,9 +83,9 @@ class BufferedNodeBase:
             else:
                 self.dependents = dependent
             instruments = [dependent.instrument for dependent in self.dependents]
-            assert len(set(instruments)) == 1, (
-                "All dependents of the buffered node must be from the same instrument"
-            )
+            assert (
+                len(set(instruments)) == 1
+            ), "All dependents of the buffered node must be from the same instrument"
 
             self.core = instruments[0]
             self.core.__init__()
@@ -119,7 +119,7 @@ class NodeMFLI(BufferedNodeBase):
         self.session = self.core.session
         self.input_trigger = input_trigger
 
-    def register_dependent(self, max_duration: float = 1e-3):
+    def register_dependent(self, step_time: int | float):
         """
         Register the measurement with the MFLI
 
@@ -134,7 +134,7 @@ class NodeMFLI(BufferedNodeBase):
         daq.edge(0)
         daq.grid.mode(2)
         daq.count(num_bursts)
-        daq.duration(max_duration)
+        daq.duration(step_time)
         daq.grid.cols(num_cols)
         for dependent in self.dependents:
             daq.subscribe(dependent)
@@ -143,11 +143,32 @@ class NodeMFLI(BufferedNodeBase):
 class NodeKeysightDMM(BufferedNodeBase):
     def __init__(
         self, dependent: Union[Parameter, Sequence[Parameter]], *args, **kwargs
-    ):
+    ) -> None:
         super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
 
-    def register_dependent(self, max_duration: float = 1e-3):
-        pass
+    def register_dependent(self, step_time: int | float) -> None:
+        """
+        Register the measurement with the Keysight DMM
+        Args:
+            step_time (int | float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
+        """
+        self.core.aperture_time(step_time / 2)
+        self.core.timetrace_dt(step_time)
+        self.core.timetrace_npts(1)
+        self.core.trigger.source("EXT")
+        self.core.trigger.count("INF")
+        self.core.trigger.delay(0.0)
+        self.core.sample.count(1)
+        self.core.sample.pretrigger_count(0)
+        self.core.init_measurement()
+
+    def fetch(self) -> list:
+        """
+        Fetch the measurement from the Keysight DMM
+        Returns:
+            list: List of the measured values
+        """
+        return self.core.fetch()
 
 
 class NodeQDAC2(BufferedNodeBase):
@@ -158,7 +179,7 @@ class NodeQDAC2(BufferedNodeBase):
         output_trigger: dict,
         *args,
         **kwargs,
-    ):
+    ) -> None:
         """
         Args:
             sweep (Sweep or Sequence[Sweep]): The sweep object to be used in the buffered sweep tree. Can be a 1D or 2D sweep.
@@ -171,9 +192,9 @@ class NodeQDAC2(BufferedNodeBase):
             # 2D sweep
             assert len(sweep) <= 2, "Maximum 2D sweep supported"
             for sw in sweep:
-                assert len(sw.parameter) == 1, (
-                    "Only one parameter per 2D sweep loop supported"
-                )
+                assert (
+                    len(sw.parameter) == 1
+                ), "Only one parameter per 2D sweep loop supported"
             inner_sweep = sweep[0]
             outer_sweep = sweep[1]
             inner_voltages = inner_sweep.values
@@ -185,10 +206,12 @@ class NodeQDAC2(BufferedNodeBase):
             self.dims = 2
 
             self.contacts = {
-                inner_sweep.parameter[0].name: inner_sweep.parameter[0]
+                inner_sweep.parameter[0]
+                .name: inner_sweep.parameter[0]
                 .underlying_instrument()
                 ._channum,
-                outer_sweep.parameter[0].name: outer_sweep.parameter[0]
+                outer_sweep.parameter[0]
+                .name: outer_sweep.parameter[0]
                 .underlying_instrument()
                 ._channum,
             }
@@ -251,21 +274,23 @@ class NodeQDAC2(BufferedNodeBase):
         # if the device has sweeps set, then trigger by internal trigger
         # if the device is acting as an end node, then trigger by external trigger
         for dependent in self.dependents:
-            assert dependent.name == "read_current_A", (
-                "Only read_current_A is supported as a dependent for QDAC2"
-            )
+            assert (
+                dependent.name == "read_current_A"
+            ), "Only read_current_A is supported as a dependent for QDAC2"
 
         if self.sweepnode:
             # internal trigger
             for dependent in self.dependents:
                 dependent.underlying_instrument().clear_measurements()
-                meas = dependent.underlying_instrument().measurement(aperture_s=step_time)
-                meas.start_on(self.arrangement.get_trigger_by_name(list(self.triggers.keys())[0]))
+                meas = dependent.underlying_instrument().measurement(
+                    aperture_s=step_time
+                )
+                meas.start_on(
+                    self.arrangement.get_trigger_by_name(list(self.triggers.keys())[0])
+                )
         elif self.endnode:
             # external trigger
             raise NotImplementedError("End node not implemented for QDAC2")
-
-        
 
 
 def _parse_bufsweep_tree(
