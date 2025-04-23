@@ -1,48 +1,12 @@
 # %%
 from qcodes.parameters import Parameter
-from qcodes_contrib_drivers.drivers.QDevil.QDAC2 import QDAC2
+from qcodes_contrib_drivers.drivers.QDevil.QDAC2 import QDac2
+from drivers.squad.helpers.helpers import Lockin
 from qcodes.instrument_drivers.Keysight import Keysight34461A
 from typing import Sequence, Union
-from zhinst.qcodes import MFLI
 import zhinst.core
-import numpy as np
 
 from qcutils.sweep import Sweep
-
-# import numpy as np
-
-# buffered_sweep = {
-#     "type": "buffered",
-#     "sw1": {
-#         "sweep": np.array,
-#         "dependents": [],
-#         "extra_parameters": {},
-#         "nodes": {
-#             "sw2": {
-#                 "sweep": np.array,
-#                 "dependents": [],
-#                 "extra_parameters": {},
-#                 "nodes": {
-#                     "sw3": {
-#                         "sweep": np.array,
-#                         "dependents": [],
-#                         "extra_parameters": {},
-#                     },
-#                     "sw4": {
-#                         "sweep": np.array,
-#                         "dependents": [],
-#                         "extra_parameters": {},
-#                     },
-#                 },
-#             },
-#             "sw5": {
-#                 "sweep": np.array,
-#                 "dependents": [],
-#                 "extra_parameters": {},
-#             },
-#         },
-#     },
-# }
 
 
 class BufferedNodeBase:
@@ -66,9 +30,9 @@ class BufferedNodeBase:
             self.sweep = sweep
             self.parameters = sweep.parameter
             instruments = [parameter.instrument for parameter in self.parameters]
-            assert (
-                len(set(instruments)) == 1
-            ), "All parameters of the buffered sweep must be from the same instrument"
+            assert len(set(instruments)) == 1, (
+                "All parameters of the buffered sweep must be from the same instrument"
+            )
 
             self.core = instruments[0]
             self.core.__init__()
@@ -89,9 +53,9 @@ class BufferedNodeBase:
             else:
                 self.dependents = dependent
             instruments = [dependent.instrument for dependent in self.dependents]
-            assert (
-                len(set(instruments)) == 1
-            ), "All dependents of the buffered node must be from the same instrument"
+            assert len(set(instruments)) == 1, (
+                "All dependents of the buffered node must be from the same instrument"
+            )
 
             self.core = instruments[0]
             self.core.__init__()
@@ -132,14 +96,15 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module.set("grid/mode", 2)
 
     def register_dependent(
-        self, sweep_points: int, step_time: int | float, input_trigger: int = 1
+        self, num_points: int, step_time: int | float, input_trigger: int = 1
     ) -> None:
         """
         Register the measurement with the MFLI
 
         Args:
-            sweep_points (int): Number of points in the sweep
+            num_points (int): Number of points in the sweep
             step_time (int | float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
+            input_trigger (int): Input trigger for the MFLI. Can only be 1 or 2.
         """
         self.daq_module.set(
             f"triggernode/{self.serial}/demods/0/sample.TrigIn{input_trigger}"
@@ -148,9 +113,9 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module.unsubscribe("*")
 
         self.daq.setDouble("/" + self.serial + "/demods/0/timeconstant", step_time)
-        self.daq_module.set("grid/cols", sweep_points)
+        self.daq_module.set("grid/cols", num_points)
         self.daq_module.set(
-            "duration", dependent.parameter.instrument.timeconstant * sweep_points
+            "duration", dependent.parameter.instrument.timeconstant * num_points
         )
 
         for dependent in self.dependents:
@@ -177,19 +142,20 @@ class NodeKeysightDMM(BufferedNodeBase):
         super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
 
     def register_dependent(
-        self, sweep_points: int, step_time: int | float, input_trigger: int = 1
+        self, num_points: int, step_time: int | float, input_trigger: int = 1
     ) -> None:
         """
         Register the measurement with the Keysight DMM
 
         Args:
-            sweep_points (int): Number of points in the sweep
+            num_points (int): Number of points in the sweep
             step_time (int | float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
+            input_trigger (int): Input trigger for the Keysight DMM. Can only be 1 (external trigger) or any other value for continuoust triggering
         """
 
         self.core.aperture_time(step_time)
-        self.core.timetrace_dt(sweep_points * step_time)
-        self.core.timetrace_npts(sweep_points)
+        self.core.timetrace_dt(num_points * step_time)
+        self.core.timetrace_npts(num_points)
         if input_trigger == 1:
             self.core.trigger.source("EXT")
         else:
@@ -251,9 +217,9 @@ class NodeQDAC2(BufferedNodeBase):
             # 2D sweep
             assert len(sweep) <= 2, "Maximum 2D sweep supported"
             for sw in sweep:
-                assert (
-                    len(sw.parameter) == 1
-                ), "Only one parameter per 2D sweep loop supported"
+                assert len(sw.parameter) == 1, (
+                    "Only one parameter per 2D sweep loop supported"
+                )
             inner_sweep = sweep[0]
             outer_sweep = sweep[1]
             inner_voltages = inner_sweep.values
@@ -262,9 +228,9 @@ class NodeQDAC2(BufferedNodeBase):
             outer_step_time_s = outer_sweep.delay
             num_points = inner_sweep.num * outer_sweep.num
 
-            assert (
-                inner_step_time_s * inner_sweep.num == outer_step_time_s
-            ), "Total time of the inner sweep must be equal to the outer sweep step time"
+            assert inner_step_time_s * inner_sweep.num == outer_step_time_s, (
+                "Total time of the inner sweep must be equal to the outer sweep step time"
+            )
 
             self.input_trigger = (
                 {f"trigin_{input_trigger}": input_trigger} if input_trigger else None
@@ -284,12 +250,10 @@ class NodeQDAC2(BufferedNodeBase):
             self.dims = 2
 
             self.contacts = {
-                inner_sweep.parameter[0]
-                .name: inner_sweep.parameter[0]
+                inner_sweep.parameter[0].name: inner_sweep.parameter[0]
                 .underlying_instrument()
                 ._channum,
-                outer_sweep.parameter[0]
-                .name: outer_sweep.parameter[0]
+                outer_sweep.parameter[0].name: outer_sweep.parameter[0]
                 .underlying_instrument()
                 ._channum,
             }
@@ -370,9 +334,9 @@ class NodeQDAC2(BufferedNodeBase):
         # if the device has sweeps set, then trigger by internal trigger
         # if the device is acting as an end node, then trigger by external trigger
         for dependent in self.dependents:
-            assert (
-                dependent.name == "read_current_A"
-            ), "Only read_current_A is supported as a dependent for QDAC2"
+            assert dependent.name == "read_current_A", (
+                "Only read_current_A is supported as a dependent for QDAC2"
+            )
 
         if self.sweepnode:
             # internal trigger
@@ -389,37 +353,76 @@ class NodeQDAC2(BufferedNodeBase):
             raise NotImplementedError("End node not implemented for QDAC2")
 
 
+# %%
+dac = QDac2("dac", "localhost")
+mfli = Lockin("mfli", "localhost")
+
+sw = Sweep(dac.ch01.dc_constant_V, start=0, stop=1, num=101, delay=1e-2)
+buffered_sweep = {
+    "type": "buffered",
+    "sw1": {
+        "instrument": NodeQDAC2,
+        "sweep": sw,
+        "trig_out": 3,
+        "nodes": {
+            "sw2": {
+                "instrument": NodeMFLI,
+                "dependents": [mfli.R],
+                "trig_in": 1,
+            },
+        },
+    },
+}
+
+
 def _parse_bufsweep_tree(
-    buffered_sweep, parent_node=None, toplevel_node=None, indent=" "
+    buffered_sweep,
+    parent=None,
+    toplevel=None,
+    num_points: int = 0,
+    step_time: float = 0.0,
 ):
-    indent += " "
-    if parent_node is None:
+    if parent is None:
         assert buffered_sweep["type"] == "buffered"
         buffered_sweep.pop("type")
         assert len(buffered_sweep) == 1, "Only one toplevel sweep allowed"
-        toplevel_node = buffered_sweep[list(buffered_sweep.keys())[0]]
+        toplevel = list(buffered_sweep.keys())[0]
 
     for node_idx, node in enumerate(buffered_sweep):
-
-        # # register node, sweep, and extra_parameters
-        print(
-            f"{indent}Node: {node.sweep.parameter}: {node.sweep.parameter.instrument.name}"
-        )
-        # print(f"{indent}{node}")
-        node.sweep = buffered_sweep[node]["sweep"]
-        node.extra_parameters = buffered_sweep[node]["extra_parameters"]
-        node.subscribe()
+        inst = node["instrument"](**node["extra_parameters"])
+        if node["sweep"]:
+            num_points_new, step_time = inst.register_sweep(
+                node["sweep"],
+                output_trigger=node["trig_out"],
+                input_trigger=node["trig_in"],
+            )
+            num_points *= num_points_new
+            # Start triggered sweeps if node has parent node.
+            # Start toplevel node sweep later, which triggers the child node sweeps
+            if parent:
+                inst.run_sweep()
+        if node["dependent"]:
+            inst.register_dependent(
+                node["dependent"],
+                num_points=num_points,
+                step_time=step_time,
+                input_trigger=node["trig_in"],
+            )
         try:
             _parse_bufsweep_tree(
                 buffered_sweep[node]["nodes"],
-                parent_node=node,
-                toplevel_node=toplevel_node,
-                indent=indent,
+                parent=node,
+                toplevel=toplevel,
+                num_points=num_points,
+                step_time=step_time,
             )
         except KeyError:
             pass
         if node_idx == len(buffered_sweep.keys()) - 1:
-            return toplevel_node["sweep"], toplevel_node["extra_parameters"]
+            return toplevel
 
 
+# %%
+toplevel = _parse_bufsweep_tree(buffered_sweep)
+toplevel.run_sweep()
 # %%
