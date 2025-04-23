@@ -15,25 +15,30 @@ from qcutils.sweep import Sweep
 #     "type": "buffered",
 #     "sw1": {
 #         "sweep": np.array,
-#         "extra_parameters": np.array,
+#         "dependents": [],
+#         "extra_parameters": {},
 #         "nodes": {
 #             "sw2": {
 #                 "sweep": np.array,
-#                 "extra_parameters": np.array,
+#                 "dependents": [],
+#                 "extra_parameters": {},
 #                 "nodes": {
 #                     "sw3": {
 #                         "sweep": np.array,
-#                         "extra_parameters": np.array,
+#                         "dependents": [],
+#                         "extra_parameters": {},
 #                     },
 #                     "sw4": {
 #                         "sweep": np.array,
-#                         "extra_parameters": np.array,
+#                         "dependents": [],
+#                         "extra_parameters": {},
 #                     },
 #                 },
 #             },
 #             "sw5": {
 #                 "sweep": np.array,
-#                 "extra_parameters": np.array,
+#                 "dependents": [],
+#                 "extra_parameters": {},
 #             },
 #         },
 #     },
@@ -107,7 +112,7 @@ class NodeMFLI(BufferedNodeBase):
         input_trigger: int | float,
         *args,
         **kwargs,
-    ):
+    ) -> None:
         """
         MFLI as a node in the buffered sweep tree
         This will be an end node in the buffered sweep tree. The MFLI will be used to measure the dependent parameter.
@@ -117,34 +122,43 @@ class NodeMFLI(BufferedNodeBase):
             trigger (int | float): Trigger input for the MFLI. Either 1 or 2.
         """
         super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
-        #self.session = self.core.session
+        # self.session = self.core.session
         self.serial = self.core.serial
-        self.daq = zhinst.core.ziDAQServer('127.0.0.1', 8004, 6) 
+        self.daq = zhinst.core.ziDAQServer("127.0.0.1", 8004, 6)
         self.daq_module = self.daq.dataAcquisitionModule()
         self.input_trigger = input_trigger
-        self.daq_module.set('preview', 1)
-        self.daq_module.set('device', self.serial)
-        self.daq_module.set('type', 6)
-        self.daq_module.set('triggernode', '/'+self.serial+'/demods/0/sample.TrigIn1') #needs to be changed to allow for arbitrary trigins on LIA side
-        self.daq_module.set('endless', 1)
-        self.daq_module.set('grid/mode', 2)
+        self.daq_module.set("preview", 1)
+        self.daq_module.set("device", self.serial)
+        self.daq_module.set("type", 6)
+        self.daq_module.set("endless", 1)
+        self.daq_module.set("grid/mode", 2)
 
-    def register_dependent(self,sweep_points: int, step_time: int | float):
+    def register_dependent(
+        self, sweep_points: int, step_time: int | float, input_trigger: int = 1
+    ) -> None:
         """
         Register the measurement with the MFLI
 
         Args:
-            max_duration (float): Maximum duration of the measurement in seconds. Depends on the preceeding sweep's step size.
+            sweep_points (int): Number of points in the sweep
+            step_time (int | float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
         """
+        self.daq_module.set(
+            f"triggernode/{self.serial}/demods/0/sample.TrigIn{input_trigger}"
+        )  # needs to be changed to allow for arbitrary trigins on LIA side
         self.daq_module.finish()
-        self.daq_module.unsubscribe('*')
-        
-        self.daq.setDouble('/'+self.serial+'/demods/0/timeconstant', step_time)
-        self.daq_module.set('grid/cols', sweep_points)
-        self.daq_module.set('duration', dependent.parameter.instrument.timeconstant*sweep_points)
+        self.daq_module.unsubscribe("*")
+
+        self.daq.setDouble("/" + self.serial + "/demods/0/timeconstant", step_time)
+        self.daq_module.set("grid/cols", sweep_points)
+        self.daq_module.set(
+            "duration", dependent.parameter.instrument.timeconstant * sweep_points
+        )
 
         for dependent in self.dependents:
-            self.daq_module.subscribe('/'+self.serial+dependent.parameter.zi_node+dependent._values[0]'.avg')
+            self.daq_module.subscribe(
+                f"/{self.serial}{dependent.parameter.zi_node}{dependent._values[0]}.avg"
+            )
 
     def fetch(self):
         """
@@ -154,7 +168,8 @@ class NodeMFLI(BufferedNodeBase):
         """
         result = self.daq_module.read()
         print(result)
-        #result[self.serial]
+        # result[self.serial]
+        # return result
 
 
 class NodeKeysightDMM(BufferedNodeBase):
@@ -163,16 +178,24 @@ class NodeKeysightDMM(BufferedNodeBase):
     ) -> None:
         super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
 
-    def register_dependent(self, step_time: int | float) -> None:
+    def register_dependent(
+        self, sweep_points: int, step_time: int | float, input_trigger: int = 1
+    ) -> None:
         """
         Register the measurement with the Keysight DMM
+
         Args:
+            sweep_points (int): Number of points in the sweep
             step_time (int | float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
         """
-        self.core.aperture_time(step_time / 2)
-        self.core.timetrace_dt(step_time)
-        self.core.timetrace_npts(1)
-        self.core.trigger.source("EXT")
+
+        self.core.aperture_time(step_time)
+        self.core.timetrace_dt(sweep_points * step_time)
+        self.core.timetrace_npts(sweep_points)
+        if input_trigger == 1:
+            self.core.trigger.source("EXT")
+        else:
+            self.core.trigger.source("IMM")
         self.core.trigger.count("INF")
         self.core.trigger.delay(0.0)
         self.core.sample.count(1)
@@ -185,7 +208,9 @@ class NodeKeysightDMM(BufferedNodeBase):
         Returns:
             list: List of the measured values
         """
-        return self.core.fetch()
+        result = self.core.fetch()
+        print(result)
+        # return result
 
 
 class NodeQDAC2(BufferedNodeBase):
@@ -193,18 +218,37 @@ class NodeQDAC2(BufferedNodeBase):
         self,
         sweep: Union[Sweep, Sequence[Sweep]],
         dependent: Union[Parameter, Sequence[Parameter]],
-        output_trigger: dict,
         *args,
         **kwargs,
     ) -> None:
         """
+        QDAC2 as a node in the buffered sweep tree
+
         Args:
             sweep (Sweep or Sequence[Sweep]): The sweep object to be used in the buffered sweep tree. Can be a 1D or 2D sweep.
             dependent (Union[Parameter, Sequence[Parameter]]): Dependent parameter to be measured. Only read_current_A is supported.
-            output_trigger (dict): Dictionary of output triggers. The keys are the names of the output triggers and the values are physical trigger port numbers.
         """
         super().__init__(sweep=sweep, dependent=dependent, *args, **kwargs)
         self.contacts = {}
+
+    def register_sweep(
+        self,
+        sweep: Union[Sweep, Sequence[Sweep]],
+        input_trigger: int = None,
+        output_trigger: int = None,
+    ):
+        """
+        Register the 1D/2D buffered sweep with triggers for the QDAC2
+
+        Args:
+            sweep (Union[Sweep, Sequence[Sweep]]): qcutils Sweep or list of Sweeps
+            input_trigger (int): input trigger for the QDAC2 (Optional, defaults to None)
+            output_trigger (int): output trigger for the QDAC2 (Optional, defaults to None)
+
+        Returns:
+            num_points (int): Number of points in the sweep
+            step_time (int | float): Duration of the innermost sweep in seconds. num_points * step_time = total time of the whole sweep sequence
+        """
         if isinstance(sweep, Sequence):
             # 2D sweep
             assert len(sweep) <= 2, "Maximum 2D sweep supported"
@@ -218,8 +262,27 @@ class NodeQDAC2(BufferedNodeBase):
             outer_voltages = outer_sweep.values
             inner_step_time_s = inner_sweep.delay
             outer_step_time_s = outer_sweep.delay
-            self.num_points = inner_sweep.num * outer_sweep.num
-            self.triggers = output_trigger
+            num_points = inner_sweep.num * outer_sweep.num
+
+            assert (
+                inner_step_time_s * inner_sweep.num == outer_step_time_s
+            ), "Total time of the inner sweep must be equal to the outer sweep step time"
+
+            self.input_trigger = (
+                {f"trigin_{input_trigger}": input_trigger} if input_trigger else None
+            )
+            self.output_trigger = (
+                {f"trigout_{output_trigger}": output_trigger}
+                if output_trigger
+                else None
+            )
+            self.input_trigger_key = (
+                f"trigin_{input_trigger}" if input_trigger else None
+            )
+            self.output_trigger_key = (
+                f"trigout_{output_trigger}" if output_trigger else None
+            )
+
             self.dims = 2
 
             self.contacts = {
@@ -234,7 +297,7 @@ class NodeQDAC2(BufferedNodeBase):
             }
             self.arrangement = self.core.arrange(
                 contacts=self.contacts,
-                output_triggers=self.triggers,
+                output_triggers=self.output_trigger,
             )
             self._qdac_sweep = self.arrangement.virtual_sweep2d(
                 inner_contact=inner_sweep.parameter[0].name,
@@ -243,37 +306,55 @@ class NodeQDAC2(BufferedNodeBase):
                 outer_voltages=outer_voltages,
                 inner_step_time_s=inner_step_time_s,
                 outer_step_time_s=outer_step_time_s,
-                inner_step_trigger=list(self.triggers.keys())[0],
+                inner_step_trigger=self.output_trigger_key,
+                start_trigger=self.input_trigger_key,
             )
 
+            return num_points, inner_step_time_s
         else:
             # 1D sweep
             # virtual detune for multiparameter sweep
             start = sweep.start
             stop = sweep.stop
-            self.num_points = sweep.num
-            delay = sweep.delay
+            num_points = sweep.num
+            step_time = sweep.delay
             self.dims = 1
 
             self.contacts = {}
             for param in sweep.parameter:
                 self.contacts[param.name] = param.underlying_instrument()._channum
 
-            self.triggers = output_trigger
+            self.input_trigger = (
+                {f"trigin_{input_trigger}": input_trigger} if input_trigger else None
+            )
+            self.output_trigger = (
+                {f"trigout_{output_trigger}": output_trigger}
+                if output_trigger
+                else None
+            )
+            self.input_trigger_key = (
+                f"trigin_{input_trigger}" if input_trigger else None
+            )
+            self.output_trigger_key = (
+                f"trigout_{output_trigger}" if output_trigger else None
+            )
+
             self.arrangement = self.core.arrange(
                 contacts=self.contacts,
-                output_triggers=self.triggers,
+                output_triggers=self.output_trigger,
             )
 
             self._qdac_sweep = self.arrangement.virtual_detune(
                 contacts=list(self.contacts.keys()),
                 start_V=[start] * len(self.contacts),
                 stop_V=[stop] * len(self.contacts),
-                steps=self.num_points,
-                step_trigger=list(self.triggers.keys())[0],
-                step_time_s=delay,
+                steps=num_points,
+                step_trigger=self.output_trigger_key,
+                start_trigger=self.input_trigger_key,
+                step_time_s=step_time,
                 repititions=1,
             )
+            return num_points, step_time
 
     def run_sweep(self):
         """
@@ -321,7 +402,7 @@ def _parse_bufsweep_tree(
         toplevel_node = buffered_sweep[list(buffered_sweep.keys())[0]]
 
     for node_idx, node in enumerate(buffered_sweep):
-        
+
         # # register node, sweep, and extra_parameters
         print(
             f"{indent}Node: {node.sweep.parameter}: {node.sweep.parameter.instrument.name}"
