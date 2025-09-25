@@ -276,8 +276,8 @@ def stepper(
                 if last_save == 0 or (time() - last_save > save_interval):
                     last_save = time()
                     dataset.to_zarr(data_location, mode="a")
-    except:
-        logging.exception("")
+    except Exception as e:
+        logging.exception(e)
         dataset.to_zarr(data_location, mode="a")
 
     dataset.to_zarr(data_location, mode="a")
