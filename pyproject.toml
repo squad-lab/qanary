@@ -17,7 +17,7 @@ keywords = ["qcodes"]
 dependencies = [
   "checksumdir>=1.2.0",
   "gitpython>=3.1.44",
-  "qcodes==0.45",
+  "qcodes>=0.45", # ==0.45 if plottr inspectr should be run in the same env
   "scipy>=1.15.2",
   "setuptools>=78.1.0",
   "zarr==2.18.4",
