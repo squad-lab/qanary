@@ -28,7 +28,16 @@ class BufferedNodeBase:
         if sweep:
             self.sweep = sweep
             self.parameters = sweep.parameter
-            instruments = [parameter.instrument for parameter in self.parameters]
+            #print(self.parameters)
+            #print(sweep.parameter.underlying_instrument)
+            #try:
+            #    instruments = [parameter.underlying_instrument for parameter in self.parameters]#
+            #except AttributeError:
+            if not isinstance(sweep.parameter, Sequence): 
+                instruments = [self.parameters.underlying_instrument]#print(self.parameters)
+            else:
+                instruments = [parameter.underlying_instrument for parameter in self.parameters] 
+
             assert len(set(instruments)) == 1, (
                 "All parameters of the buffered sweep must be from the same instrument"
             )
@@ -37,12 +46,12 @@ class BufferedNodeBase:
             )
 
             self.core = instruments[0]
-            self.core.__init__()
+            #self.core.__init__()
 
-            self.start = sweep.start
-            self.stop = sweep.stop
-            self.num = sweep.num
-            self.step = sweep.step
+            self.start = sweep.values[0]
+            self.stop = sweep.values[-1]
+            self.num = len(sweep.values)
+            self.step = abs(sweep.values[1]-sweep.values[0])
             self.delay = sweep.delay
             self.start_delay = sweep.start_delay
 
@@ -60,6 +69,7 @@ class BufferedNodeBase:
             )
 
             self.core = instruments[0]
+
             self.core.__init__()
 
         else:
@@ -74,7 +84,7 @@ class BufferedNodeBase:
 class NodeMFLI(BufferedNodeBase):
     def __init__(
         self,
-        dependent: Union[Parameter, Sequence[Parameter]],
+        dependent: Union[Parameter, Sequence[Parameter]]=None,
         *args,
         **kwargs,
     ) -> None:
@@ -139,7 +149,7 @@ class NodeMFLI(BufferedNodeBase):
 
 class NodeKeysightDMM(BufferedNodeBase):
     def __init__(
-        self, dependent: Union[Parameter, Sequence[Parameter]], *args, **kwargs
+        self, dependent: Union[Parameter, Sequence[Parameter]]=None, *args, **kwargs
     ) -> None:
         super().__init__(sweep=None, dependent=dependent, *args, **kwargs)
 
@@ -182,8 +192,8 @@ class NodeKeysightDMM(BufferedNodeBase):
 class NodeQDAC2(BufferedNodeBase):
     def __init__(
         self,
-        sweep: Union[Sweep, Sequence[Sweep]],
-        dependent: Union[Parameter, Sequence[Parameter]],
+        sweep: Union[Sweep, Sequence[Sweep]]=None,
+        dependent: Union[Parameter, Sequence[Parameter]]=None,
         *args,
         **kwargs,
     ) -> None:
@@ -194,7 +204,8 @@ class NodeQDAC2(BufferedNodeBase):
             sweep (Sweep or Sequence[Sweep]): The sweep object to be used in the buffered sweep tree. Can be a 1D or 2D sweep.
             dependent (Union[Parameter, Sequence[Parameter]]): Dependent parameter to be measured. Only read_current_A is supported.
         """
-        super().__init__(sweep=sweep, dependent=dependent, *args, **kwargs)
+        #self.inst = sweep.parameter.underlying_instrument
+        super().__init__(sweep=sweep, dependent=dependent, *args, **kwargs)#name = self.inst.name, adress =  
         self.contacts = {}
 
     def register_sweep(
@@ -281,16 +292,17 @@ class NodeQDAC2(BufferedNodeBase):
         else:
             # 1D sweep
             # virtual detune for multiparameter sweep
-            start = sweep.start
-            stop = sweep.stop
-            num_points = sweep.num
+            start = sweep.values[0]
+            stop = sweep.values[-1]
+            num_points = len(sweep.values)
             step_time = sweep.delay
             self.dims = 1
 
             self.contacts = {}
-            for param in sweep.parameter:
-                self.contacts[param.name] = param.underlying_instrument()._channum
-
+            if isinstance(sweep.parameter, Sequence):
+                for param in sweep.parameter:
+                    self.contacts[param.name] = param.instrument._channum
+            else: self.contacts[sweep.parameter.name] = sweep.parameter.instrument._channum#no clue what the _channum is supposed to do here
             self.input_trigger = (
                 {f"trigin_{input_trigger}": input_trigger} if input_trigger else None
             )
@@ -314,12 +326,12 @@ class NodeQDAC2(BufferedNodeBase):
             self._qdac_sweep = self.arrangement.virtual_detune(
                 contacts=list(self.contacts.keys()),
                 start_V=[start] * len(self.contacts),
-                stop_V=[stop] * len(self.contacts),
+                end_V=[stop] * len(self.contacts),
                 steps=num_points,
                 step_trigger=self.output_trigger_key,
                 start_trigger=self.input_trigger_key,
                 step_time_s=step_time,
-                repititions=1,
+                repetitions=1,
             )
             return num_points, step_time
 
@@ -359,21 +371,23 @@ class NodeQDAC2(BufferedNodeBase):
 
 
 # %%
-dac = QDac2("dac", "localhost")
-mfli = Lockin("mfli", "localhost")
+#dac = QDac2("dac", "localhost")
+#mfli = Lockin("mfli", "localhost")
+#mfli1 = Lockin(name="mfli1", address="localhost", serial="DEV6264")#
+#dac = QDac2("dac", 'ASRL8::INSTR')#"TCPIP0::192.168.0.106::5025::SOCKET"
 
-sw = Sweep(dac.ch18.dc_constant_V, start=0, stop=1, num=101, delay=1e-2)
+sw = Sweep(dac.ch01.dc_constant_V, start=0, stop=0.01, num=101, delay=1e-2)
 buffered_sweep = {
     "type": "buffered",
     "sw1": {
         "instrument": NodeQDAC2,
         "sweep": sw,
-        "trig_out": 3,
+        "output_trigger": 1,
         "nodes": {
             "sw2": {
                 "instrument": NodeMFLI,
-                "dependents": [mfli.auxins[0].value],
-                "trig_in": 1,
+                "dependent": [mfli1.core.demods[0].sample['R']],
+                "input_trigger": 1,
             },
         },
     },
