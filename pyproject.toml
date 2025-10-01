@@ -22,7 +22,7 @@ dependencies = [
   "setuptools>=78.1.0",
   "zarr==2.18.4",
   "numcodecs==0.15",
-  "zhinst>=25.1.0",
+  "zhinst==25.4.0",
   "zhinst-qcodes>=0.6.0",
   "pillow>=11.2.1",
   "drivers",
