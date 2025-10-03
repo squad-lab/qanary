@@ -1307,7 +1307,7 @@ requires-dist = [
     { name = "tool", specifier = ">=0.8.0" },
     { name = "zarr", specifier = "==2.18.4" },
     { name = "zeroconf", specifier = ">=0.147.2" },
-    { name = "zhinst", specifier = "==25.4.0" },
+    { name = "zhinst", specifier = "==25.7.0" },
     { name = "zhinst-qcodes", specifier = ">=0.6.0" },
 ]
 
@@ -1800,37 +1800,37 @@ wheels = [
 
 [[package]]
 name = "zhinst"
-version = "25.4.0"
+version = "25.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "zhinst-core" },
     { name = "zhinst-toolkit" },
     { name = "zhinst-utils" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/17/19/108e81935167d591f509d949a0e7e0f7c90b220d19257f574eb28ab3328b/zhinst-25.4.0.tar.gz", hash = "sha256:52496fddd0a7f529fa9639c15bef9b4fcc77293b81e4796a0b4ce6e41a7296b6", size = 1112956 }
+sdist = { url = "https://files.pythonhosted.org/packages/be/ed/42d4748dbad08fc9030e1b6acbc4aaad1f0d052b96a1e2542a30ab1fc5ed/zhinst-25.7.0.tar.gz", hash = "sha256:00bfef1ab03fbdb72466d18712b334620679f008f0d08578788bf7429d5fd695", size = 1112949 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/c7/dd5dd611bd5c16f6ecda61d03cd063e3100a2313e6ae67f894435b3c476f/zhinst-25.4.0-py3-none-any.whl", hash = "sha256:660878b0e2508dda9768cfa264b99f54a7dd8418ce0e3127987603e554055586", size = 2530 },
+    { url = "https://files.pythonhosted.org/packages/ea/a4/2b38effcc8977b0992b2c6415cc7d52b6f12b9e8be227db6a5b12b045798/zhinst-25.7.0-py3-none-any.whl", hash = "sha256:63a2d96f82081218fae51fef181ed32ba1c4aeda6cdb2232c158a18a4d30466f", size = 2534 },
 ]
 
 [[package]]
 name = "zhinst-core"
-version = "25.4.0.628"
+version = "25.7.0.507"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/40/07e7feb48490d876246e3e2d5e89853c7279187777cf2fb34c6c8b5a5136/zhinst_core-25.4.0.628-cp312-cp312-macosx_10_11_x86_64.whl", hash = "sha256:2a2e1fc21b6e0bbca9c3400d2fa0c21e3301aec9421e52c3df0f46616da6a959", size = 10453178 },
-    { url = "https://files.pythonhosted.org/packages/09/1b/4ed9ad93b17624ee760635d23cfe8ef2fcd45ff4e6e4e11663465ea28411/zhinst_core-25.4.0.628-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:1837b98c1a0d9d11100537866c4297b48e529a02e7ee29534c08fffa215f9b34", size = 9574453 },
-    { url = "https://files.pythonhosted.org/packages/02/03/b905885f34cd26281e9a4c3e54c7b70f01d21c02a527762c8a647240001b/zhinst_core-25.4.0.628-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:f633aa4fc6dd7c10987ed996334d603a2d82e6754212e6f0e785ca1c14983baf", size = 13335332 },
-    { url = "https://files.pythonhosted.org/packages/e9/20/4611b91d4bda20e089ef268e120650cd28497d93a6a5b0d323a1917e6e65/zhinst_core-25.4.0.628-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:7b71b9dd87adec047c13a2078bfeb8ac68e8563a921bcff9a4aec64b68d824ac", size = 13232527 },
-    { url = "https://files.pythonhosted.org/packages/97/9b/06aeba25e30efca42496351a19765c6a7a85a2944c73df901c3aef12d402/zhinst_core-25.4.0.628-cp312-cp312-win_amd64.whl", hash = "sha256:f340d0c56cd440c23271310983b8e0a5c3c5c581d4a9d50c52129cd4a7ec50d7", size = 9265205 },
-    { url = "https://files.pythonhosted.org/packages/4a/57/b6150c60578ba240407ca852984f384614e1686055934067cff4378aae58/zhinst_core-25.4.0.628-cp313-cp313-macosx_10_11_x86_64.whl", hash = "sha256:6ffdd0e52b79a866d441dfee28772d99c534ead40a910a59573b7719ebc2d3c2", size = 10452917 },
-    { url = "https://files.pythonhosted.org/packages/a3/ef/58073b28ddc95c38d03250aba9548ab544cb2deb0732d8214e0cae329431/zhinst_core-25.4.0.628-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:6340f58b1d19e9a58494093bba3b0b430c137417bf6d3a83fad00e1d835c0c2f", size = 9574146 },
-    { url = "https://files.pythonhosted.org/packages/6a/cc/d6302d4fa6ba6806c0135678bec161f17b7b39d1830771f65ed2d773a538/zhinst_core-25.4.0.628-cp313-cp313-manylinux1_x86_64.whl", hash = "sha256:153c8d7d53259d2e5136ebfd7fed4fd3e8b93264a70c10906b869fba2c7df406", size = 13335444 },
-    { url = "https://files.pythonhosted.org/packages/98/95/8723507105e472a7bb43bef201d638e4f300f53ffad1f8a5f4e195761ac3/zhinst_core-25.4.0.628-cp313-cp313-manylinux2014_aarch64.whl", hash = "sha256:03d9fbb221cdce0855f8e856c65933434e3d3dc110f672ccd51156be50db975e", size = 13231891 },
-    { url = "https://files.pythonhosted.org/packages/79/a5/b5154c3f6d9b6fdb9f96a9c79fcf96afdf427c362a43b21db170afb02895/zhinst_core-25.4.0.628-cp313-cp313-win_amd64.whl", hash = "sha256:9db15a54f8f18351f2f43f33e371eb1e2d873622a421ad4f92d4e3b1a2977701", size = 9265800 },
+    { url = "https://files.pythonhosted.org/packages/c1/76/70498acb936b5a3315fc8d750ca11e60837ca86801ea60527805112a6f03/zhinst_core-25.7.0.507-cp312-cp312-macosx_10_11_x86_64.whl", hash = "sha256:c13a905c078171d1d92563aa6c4b7a1493cdad9c887e0f340b23d927677f96cf", size = 10478331 },
+    { url = "https://files.pythonhosted.org/packages/bb/e5/bee63ccd315c3bc868f53b399540d83e4ba5c9604f065d5db4dc5fc74dfc/zhinst_core-25.7.0.507-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:d825de5a67f641785e49381c116896e71f2569c58209056703d6c50704ce8657", size = 9645813 },
+    { url = "https://files.pythonhosted.org/packages/f2/22/493ac4df4126d463327762b0d49db3bf676806db391f3775a21677cf0f70/zhinst_core-25.7.0.507-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:ae3c27b4a4a2bfa8e8fd16a54b31e4e1a563e07681bafc67f0bf0b1dc530e000", size = 13215513 },
+    { url = "https://files.pythonhosted.org/packages/00/e7/ab474fd3ebc461743277f2fcf9114ed84abe6c47f114424f67ec1e11270a/zhinst_core-25.7.0.507-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:7cc856ba30b8464e1a07a7494d9fb5c7001906ad606a48ac0548ccc76b26acf6", size = 13092525 },
+    { url = "https://files.pythonhosted.org/packages/3f/88/01cc88b144ba59b235a8759c340654fac43d52eed61747b0e7cfd230522c/zhinst_core-25.7.0.507-cp312-cp312-win_amd64.whl", hash = "sha256:22acf47276054d49901bc7dbada0a7cd1eff9f79a2dd1d203d6a582291cc43bb", size = 9255824 },
+    { url = "https://files.pythonhosted.org/packages/6a/48/24911ba744e5c19c7d0ec9b6586ee5aa7e0ab26e5b45ee9bf4371a28741e/zhinst_core-25.7.0.507-cp313-cp313-macosx_10_11_x86_64.whl", hash = "sha256:4d636412246c7c38b11225bbafcab9e579675c395eba24d3ec4a0d54b19a4ebd", size = 10478645 },
+    { url = "https://files.pythonhosted.org/packages/b4/18/363a201921684d06ab4380202be1d3b18eb7dce4c3c38d49b3b4d269953f/zhinst_core-25.7.0.507-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:3edea5557dfd0b4699097d6154c6d40496fd076af2372c53d09720531561bfa2", size = 9647011 },
+    { url = "https://files.pythonhosted.org/packages/9b/ab/1bf1cdf881abb976f20b2c294fca316dc4d5907742f98c6dbde4df5ef724/zhinst_core-25.7.0.507-cp313-cp313-manylinux1_x86_64.whl", hash = "sha256:3fdff94c92ba18b6967f1d603af658e2b926e6a0acf49975eb5cb45745a172d4", size = 13215440 },
+    { url = "https://files.pythonhosted.org/packages/bd/82/004898a2f641f14ad528d29e4067c61c106cd37caf0cb48847a6e95d31f3/zhinst_core-25.7.0.507-cp313-cp313-manylinux2014_aarch64.whl", hash = "sha256:5536ea7e69c66a8bd7a56b79024a5101da33ba10d88d089bb3b6b8a60c4f4abd", size = 13092540 },
+    { url = "https://files.pythonhosted.org/packages/54/63/889316b5ce0feef42cd5d9c67f537e296a83def892c2388bd159398a7fcc/zhinst_core-25.7.0.507-cp313-cp313-win_amd64.whl", hash = "sha256:987861a004c86f87cca5453ed2bf9d93a5de108f2cc2a975f37d972aea628c93", size = 9255605 },
 ]
 
 [[package]]
@@ -1862,7 +1862,7 @@ wheels = [
 
 [[package]]
 name = "zhinst-toolkit"
-version = "0.7.1"
+version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonref" },
@@ -1873,14 +1873,14 @@ dependencies = [
     { name = "zhinst-core" },
     { name = "zhinst-utils" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/89/fd291a183a213b605dd9bd69279e2d280bc6a6e8141c4b30d20426541a38/zhinst_toolkit-0.7.1.tar.gz", hash = "sha256:2e43462bfaa09a07ccac7fada4813d7e3c0942acdc5b39bad3bc94b3b31feb17", size = 886532 }
+sdist = { url = "https://files.pythonhosted.org/packages/97/47/486a95fb76abe72a043352795b699fa61e8f77df282981e9f691fbd34637/zhinst_toolkit-1.0.1.tar.gz", hash = "sha256:004785d6f7fe991334a2f32a2c6cbb0c816aeed7baeda6fe312ec68845e7b2ea", size = 800076 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/cd/a3d8a87ee1dbcdf8a7a0733f70ced31268b2bba67111562170906da574b1/zhinst_toolkit-0.7.1-py3-none-any.whl", hash = "sha256:e2f326453a11a36614519269b9738837dcaaa2a14c89e197334202028b0301dc", size = 112443 },
+    { url = "https://files.pythonhosted.org/packages/d1/23/fea2c57fc481eaadb1b2845c6afdaca16e482482295f524a03ca39095fcc/zhinst_toolkit-1.0.1-py3-none-any.whl", hash = "sha256:130fc9f693da773424d6cb60d8ef44ccf6df08110c054275b6f361a6b291cee8", size = 111125 },
 ]
 
 [[package]]
 name = "zhinst-utils"
-version = "0.6.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -1888,7 +1888,7 @@ dependencies = [
     { name = "zhinst-timing-models" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/31/1f7450afbbba52cb669b8775c0d8504014d13f88dfc193cf8ddb92f28991/zhinst_utils-0.6.0-py3-none-any.whl", hash = "sha256:8e18a15e02f83c9644bfbd3bb24b40e9ad3811ee95cdc9b857fdfdfc77ca0fa6", size = 52258 },
+    { url = "https://files.pythonhosted.org/packages/92/52/de745de234fb976f08e3b4c96338e369d6cbce2bebb64b780023313fb217/zhinst_utils-0.7.0-py3-none-any.whl", hash = "sha256:819d34b9d39d5c70674e03629be26bcc7005125e95a92b91368c5d26b6ced161", size = 52323 },
 ]
 
 [[package]]
