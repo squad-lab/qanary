@@ -1,11 +1,14 @@
-import logging
 from threading import Thread
 from time import sleep, time
-from typing import Callable, Sequence, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
 import numpy as np
+import zarr
 from qcodes.parameters import Parameter
 
+from qcutils.logger import get_logger
+
+logger = get_logger(__name__)
 last_save = 0
 
 
@@ -33,10 +36,10 @@ class Sweep:
             ramprate: ramp rate
         """
         if not (step or num):
-            logging.error("Either one of step or num has to be set")
+            logger.error("Either one of step or num has to be set")
             raise ValueError("Either one of step or num has to be set")
         if not (delay or ramprate):
-            logging.error("Either one of delay or ramprate has to be set")
+            logger.error("Either one of delay or ramprate has to be set")
             raise ValueError("Either one of delay or ramprate has to be set")
 
         if step:
@@ -81,10 +84,10 @@ class CircularSweep:
             repetitions: number of times to repeat the sweep
         """
         if not (step or num):
-            logging.error("Either one of step or num has to be set")
+            logger.error("Either one of step or num has to be set")
             raise ValueError("Either one of step or num has to be set")
         if not (delay or ramprate):
-            logging.error("Either one of delay or ramprate has to be set")
+            logger.error("Either one of delay or ramprate has to be set")
             raise ValueError("Either one of delay or ramprate has to be set")
 
         if step:
@@ -214,8 +217,12 @@ def stepper(
     save_interval: float = 0.1,
     interrupt: Callable = lambda: False,
     parallel_sweep: bool = False,
+    memory_store: Optional[Any] = None,
+    disk_store: Optional[Any] = None,
+    verbose: bool = False,
 ):
-    """Recursive stepper function for generating the for loops required to sweep measurements
+    """
+    Recursive stepper function for generating the for loops required to sweep measurements
 
     Args:
         dataset: xarray dataset to store the data
@@ -228,16 +235,50 @@ def stepper(
         save_interval: Time interval to save the data
         interrupt: Boolean to enable custom stops
         parallel_sweep: Boolean to enable parallel parameter sweeps
+        memory_store: Optional zarr store that keeps the live dataset in memory
+        disk_store: Optional zarr store used for persisting to disk
+        verbose: Enables verbose logging of persistence actions when True
+
     """
     sweep = sweeps[len(sweeps) - depth]
+
+    def _persist_memory():
+        if memory_store is None:
+            logger.warning(
+                "[stepper._persist_memory] No memory store provided, skipping in-memory persistence"
+            )
+            return
+        dataset.to_zarr(store=memory_store, mode="w")
+        if verbose:
+            logger.info("[stepper._persist_memory] Saved dataset to in-memory store")
+
+    def _persist_disk():
+        if disk_store is not None:
+            if memory_store is not None:
+                zarr.copy_store(memory_store, disk_store, if_exists="replace")
+                if verbose:
+                    logger.info(
+                        "[stepper._persist_disk] Copied in-memory store to disk store"
+                    )
+            else:
+                dataset.to_zarr(store=disk_store, mode="a")
+                if verbose:
+                    logger.info(
+                        "[stepper._persist_disk] Saved dataset directly to disk store"
+                    )
+        else:
+            dataset.to_zarr(data_location, mode="a")
+            if verbose:
+                logger.info(f"[stepper._persist_disk] Saved dataset to {data_location}")
+
     try:
         for idx, sweep_point in enumerate(sweep.values):
             if idx == 0:
                 sleep(sweep.start_delay)
 
             if interrupt():
-                logging.info("Interrupt recieved from measurement parameters")
-                raise InterruptedError("Interrupt recieved from measurement parameters")
+                logger.info("Interrupt received from measurement parameters")
+                raise InterruptedError("Interrupt received from measurement parameters")
 
             else:
                 for param in sweep.parameter:
@@ -262,6 +303,10 @@ def stepper(
                     bar,
                     save_interval,
                     interrupt,
+                    parallel_sweep=parallel_sweep,
+                    memory_store=memory_store,
+                    disk_store=disk_store,
+                    verbose=verbose,
                 )
 
             elif depth == 1:
@@ -275,10 +320,15 @@ def stepper(
                 global last_save
                 if last_save == 0 or (time() - last_save > save_interval):
                     last_save = time()
-                    dataset.to_zarr(data_location, mode="a")
-    except:
-        logging.exception("")
-        dataset.to_zarr(data_location, mode="a")
 
-    dataset.to_zarr(data_location, mode="a")
+                    # NOTE: Writing dataset to MemoryStore as well as DiskStore
+                    _persist_memory()
+                    _persist_disk()
+    except Exception as e:
+        logger.exception(e, exc_info=True)
+        _persist_memory()
+        _persist_disk()
+
+    _persist_memory()
+    _persist_disk()
     return dataset

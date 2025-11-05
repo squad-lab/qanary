@@ -36,7 +36,7 @@ run_dict = {
     "station": st,
     "metadata": extra_metadata,
     "location_return": True,
-    "data_location": "D:/Measurement/Data/",
+    "data_location": "D:/Measurements/Data/",
 }
 # %%
 measure.run(
