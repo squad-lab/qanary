@@ -1,11 +1,11 @@
 image: "python:3.12"
 
 stages:
-  - linting
+  - format
   - build
 
-.lint_generic:
-  stage: linting
+ruff:
+  stage: format
   before_script:
       - git config --global user.name "Janitor"
       - git config --global user.email "squad@fz-juelich.de"
@@ -14,33 +14,29 @@ stages:
       - git checkout $CI_COMMIT_REF_NAME
       - git reset --hard origin/$CI_COMMIT_REF_NAME
       - git pull --rebase
-      - python3 -m pip install --upgrade pip autoflake black[jupyter]
-
-black:
-  extends: .lint_generic
+      - curl -LsSf https://astral.sh/uv/install.sh | sh
+      - source $HOME/.local/bin/env
+      - uv tool install ruff@latest
   script:
-    - black src/
+    - ruff format src/
   after_script:
     - git add .
-    - git commit -m "black update"
+    - git commit -m "ruff update"
     - git push
   only:
     - merge_requests
 
-flake8:
-  extends: .lint_generic
-  script:
-    - autoflake --remove-all-unused-imports --in-place --recursive src/
-  after_script:
-    - git add .
-    - git commit -m "flake8 update"
-    - git push
-  only:
-    - merge_requests
-
-build-test:
+build_package:
   stage: build
+  before_script:
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - source $HOME/.local/bin/env
   script:
-    - pip install -e .
+    - echo "Building with uv"
+    - uv build
+  artifacts:
+    paths:
+      - dist/*.tar.gz
+      - dist/*.whl
   only:
-    - merge_requests
+    - main
