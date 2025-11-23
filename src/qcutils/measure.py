@@ -8,20 +8,18 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Callable, Dict, Optional, Sequence, Union
-from checksumdir import dirhash
+
 import numpy as np
 import xarray as xr
 import zarr
-from git import Repo, GitCommandError
+from checksumdir import dirhash
+from git import GitCommandError, Repo
+from qcodes.parameters import Parameter
 from tabulate import tabulate
 from tqdm import tqdm
-from qcodes.parameters import Parameter
 
 # Local imports
-from qcutils import live_server
-from qcutils import live_db
-
-
+from qcutils import live_db, live_server
 from qcutils.logger import get_logger
 from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
 
@@ -185,6 +183,8 @@ class Station:
         self, name: str, label: str, param: Parameter, param_type: str = "gate"
     ):
         pm = ParameterMixin(param, name, label, param_type)
+        param.label = label
+
         if pm in self.parameters:
             raise ValueError(
                 f"Parameter {pm.name} already exists in station {self.name}"
@@ -283,9 +283,17 @@ class Measurement:
                 "unit": dependent.unit,
                 "label": dependent.label,
                 "instrument": dependent.instrument.name,
-                "instrument_snapshot": str(dependent.instrument.snapshot()),
+                # snapshots included in the gloabl metadata
+                # "instrument_snapshot": str(dependent.instrument.snapshot()),
             },
         )
+        for sweep in sweeps:
+            for param in sweep.parameter:
+                data_array.coords[param.name].attrs["instrument"] = (
+                    param.instrument.name
+                )
+                data_array.coords[param.name].attrs["unit"] = param.unit
+                data_array.coords[param.name].attrs["label"] = param.label
 
         data_array.data[:] = np.nan
         return data_array
@@ -320,7 +328,7 @@ class Measurement:
             "Sample Name": self.sample_name,
             "Experiment Name": self.experiment,
             "Requirements": self.get_installed_packages(),
-            "Code Archive": str(code_archive),
+            # "Code Archive": str(code_archive),
         }
 
         self.cryostat = meta["Cryostat"]
@@ -335,8 +343,13 @@ class Measurement:
             for sweep in sweeps
             for param in sweep.parameter
         }
-
-        return xr.Dataset(data_vars=data_vars, coords=coords, attrs=meta)
+        ds = xr.Dataset(data_vars=data_vars, coords=coords, attrs=meta)
+        for sweep in sweeps:
+            for param in sweep.parameter:
+                ds.coords[param.name].attrs["instrument"] = param.instrument.name
+                ds.coords[param.name].attrs["unit"] = param.unit
+                ds.coords[param.name].attrs["label"] = param.label
+        return ds
 
     def _push_gitlab(self, dataset, data_hash):
         """Push the data to the gitlab repository
