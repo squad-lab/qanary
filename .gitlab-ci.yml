@@ -2,6 +2,7 @@ image: "python:3.12"
 
 stages:
   - format
+  - auto_tag_version
   - build
 
 ruff:
@@ -25,6 +26,68 @@ ruff:
     - git push
   only:
     - merge_requests
+
+auto_tag_version:
+  stage: auto_tag_version
+  image: python:3.13-alpine
+  before_script:
+    - apk add --no-cache git
+    - pip3 install toml --break-system-packages
+    - git config --global user.name "Janitor"
+    - git config --global user.email "squad@fz-juelich.de"
+    - git remote set-url origin https://squad_janitor:$CI_FORMAT@$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME
+    - git fetch
+    - git checkout $CI_COMMIT_REF_NAME
+    - git reset --hard origin/$CI_COMMIT_REF_NAME
+    - git pull --rebase
+  script:
+    # Extract current version from pyproject.toml
+    - |
+      python3 << 'EOF'
+      import toml
+      data = toml.load('pyproject.toml')
+      version = data['project']['version']
+      with open('current_version.txt', 'w') as f:
+          f.write(version)
+      print(f"Current version: {version}")
+      EOF
+    - export CURRENT_VERSION=$(cat current_version.txt)
+    - echo "Current version in pyproject.toml is v$CURRENT_VERSION"
+    
+    # Check if this version tag already exists
+    - git fetch --tags
+    - |
+      if git rev-parse "v$CURRENT_VERSION" >/dev/null 2>&1; then
+        echo "Tag v$CURRENT_VERSION already exists, skipping tag creation"
+        exit 0
+      fi
+    
+    # Check if version line was changed in this commit
+    - |
+      # Check if this is the first commit (no parent)
+      if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
+        echo "First commit detected - creating initial tag v$CURRENT_VERSION"
+        git tag -a "v$CURRENT_VERSION" -m "Release version $CURRENT_VERSION"
+        git push origin "v$CURRENT_VERSION"
+        echo "Successfully created initial tag v$CURRENT_VERSION"
+        exit 0
+      fi
+      
+      # Check if version line was changed in this commit
+      if git diff HEAD~1 HEAD -- backend/pyproject.toml | grep -E '^\+[[:space:]]*version[[:space:]]*='; then
+        echo "Version was updated in this commit, creating tag v$CURRENT_VERSION"
+        
+        # Create and push the tag
+        git tag -a "v$CURRENT_VERSION" -m "Release version $CURRENT_VERSION"
+        git push origin "v$CURRENT_VERSION"
+        
+        echo "Successfully created and pushed tag v$CURRENT_VERSION"
+      else
+        echo "Version line was not changed in this commit, skipping tag creation"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: on_success
 
 build_package:
   stage: build
