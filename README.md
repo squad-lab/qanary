@@ -47,6 +47,7 @@ uv pip install package
 If you prefer to skip the `add` commands, you can set up the project directly with a `pyproject.toml` file. Here’s an example:
 
 ```toml
+[project]
 name = "example"
 version = "0.1.0"
 description = "Add your description here"
