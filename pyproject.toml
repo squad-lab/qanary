@@ -1,6 +1,6 @@
 [project]
 name = "qcutils"
-version = "0.5.0"
+version = "0.6.0"
 authors = [
   { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
 ]
@@ -17,7 +17,7 @@ keywords = ["qcodes"]
 dependencies = [
   "checksumdir>=1.2.0",
   "gitpython>=3.1.44",
-  "qcodes==0.45",
+  "qcodes>=0.45", # ==0.45 if plottr inspectr should be run in the same env
   "scipy>=1.15.2",
   "setuptools>=78.1.0",
   "zarr==2.18.4",
@@ -32,6 +32,7 @@ dependencies = [
   "pyvisa>=1.14.1",
   "pyvisa-py>=0.7.2",
   "zeroconf>=0.147.2",
+  "websockets>=14.0",
 ]
 
 [project.urls]

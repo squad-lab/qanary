@@ -77,3 +77,6 @@ config.yaml
 test_db/
 test/
 D:
+
+# Variants of example.py
+example.*.py

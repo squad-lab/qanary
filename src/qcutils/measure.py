@@ -1,25 +1,156 @@
 import datetime
 import json
-import logging
 import os
 import socket
 import subprocess
 import sys
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Callable, Sequence, Union
-from checksumdir import dirhash
-
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
+from typing import Callable, Dict, Optional, Sequence, Union
 
 import numpy as np
 import xarray as xr
-from git import Repo, GitCommandError
+import zarr
+from checksumdir import dirhash
+from git import GitCommandError, Repo
+from qcodes.parameters import Parameter
 from tabulate import tabulate
 from tqdm import tqdm
-from qcodes.parameters import Parameter
 
+# Local imports
+from qcutils import live_db, live_server
+from qcutils.logger import get_logger
 from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class LiveDatasetInfo:
+    store: Optional[zarr.MemoryStore]
+    disk_path: Optional[str] = None
+    host: str = field(default_factory=lambda: socket.gethostname())
+    pid: int = field(default_factory=os.getpid)
+    started_at: str = field(
+        default_factory=lambda: datetime.datetime.utcnow().isoformat()
+    )
+
+
+# Registry tracking active in-memory Zarr stores keyed by measurement ID.
+LIVE_MEMORY_STORES: Dict[str, Union[zarr.MemoryStore, LiveDatasetInfo]] = {}
+
+
+def register_memory_store(
+    measurement_id: str, store: zarr.MemoryStore, disk_path: Optional[str] = None
+) -> int:
+    """
+    Register a memory store and start WebSocket server.
+
+    Returns:
+        int: WebSocket port number if server started, 0 otherwise
+    """
+    info = LiveDatasetInfo(store=store, disk_path=disk_path)
+    LIVE_MEMORY_STORES[measurement_id] = info
+
+    ws_port = 0
+
+    # Start WebSocket server if not already running
+    if live_server.is_server_running():
+        ws_port = live_server.get_server_port()
+        logger.debug(
+            f"WebSocket server already running on port {ws_port}, registered measurement {measurement_id}"
+        )
+    else:
+        logger.info("Starting WebSocket server for live data...")
+        # NOTE: Find available port starting from 8765
+        ws_port = _find_available_port(8765)
+        live_server.set_memory_stores_reference(LIVE_MEMORY_STORES)
+        if live_server.start_live_server(port=ws_port):
+            logger.info(
+                f"Live data WebSocket server started on ws://localhost:{ws_port}"
+            )
+        else:
+            logger.error("Failed to start live data WebSocket server")
+            ws_port = 0
+
+    # Register in database if available
+    if live_db and ws_port > 0 and disk_path:
+        try:
+            live_db.init_database()
+            ws_url = f"ws://localhost:{ws_port}"
+            started_at = datetime.datetime.utcnow().isoformat()
+            live_db.register_measurement(
+                measurement_id=measurement_id,
+                fpath=disk_path,
+                ws_url=ws_url,
+                ws_port=ws_port,
+                started_at=started_at,
+            )
+            logger.info(f"Registered measurement {measurement_id} in database")
+        except Exception as e:
+            logger.warning(f"Failed to register measurement in database: {e}")
+
+    return ws_port
+
+
+def _find_available_port(start_port: int, max_attempts: int = 100) -> int:
+    """Find an available port starting from start_port."""
+    for port in range(start_port, start_port + max_attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("localhost", port))
+                return port
+            except OSError:
+                continue
+    # Fallback to start_port if none found
+    return start_port
+
+
+def get_memory_store(measurement_id: str) -> Optional[zarr.MemoryStore]:
+    entry = LIVE_MEMORY_STORES.get(measurement_id)
+    if isinstance(entry, LiveDatasetInfo):
+        return entry.store
+    return entry
+
+
+def unregister_memory_store(measurement_id: str) -> None:
+    LIVE_MEMORY_STORES.pop(measurement_id, None)
+
+    # Mark as ended in database
+    if live_db:
+        try:
+            ended_at = datetime.datetime.utcnow().isoformat()
+            live_db.end_measurement(measurement_id, ended_at)
+            logger.info(f"Marked measurement {measurement_id} as ended in database")
+        except Exception as e:
+            logger.warning(f"Failed to mark measurement as ended in database: {e}")
+
+
+def get_live_dataset_info(measurement_id: str) -> Optional[LiveDatasetInfo]:
+    """Return LiveDatasetInfo for the given measurement if available."""
+
+    entry = LIVE_MEMORY_STORES.get(measurement_id)
+    if isinstance(entry, LiveDatasetInfo):
+        return entry
+    if entry is not None:
+        return LiveDatasetInfo(store=entry)
+
+    return None
+
+
+def list_live_measurements(include_registry: bool = True) -> Dict[str, LiveDatasetInfo]:
+    """Return mapping of measurement id to LiveDatasetInfo."""
+
+    results: Dict[str, LiveDatasetInfo] = {}
+    for measurement_id, entry in LIVE_MEMORY_STORES.items():
+        if isinstance(entry, LiveDatasetInfo):
+            results[measurement_id] = entry
+        else:
+            results[measurement_id] = LiveDatasetInfo(store=entry)
+
+    return results
+
 
 bar = None
 
@@ -52,6 +183,8 @@ class Station:
         self, name: str, label: str, param: Parameter, param_type: str = "gate"
     ):
         pm = ParameterMixin(param, name, label, param_type)
+        param.label = label
+
         if pm in self.parameters:
             raise ValueError(
                 f"Parameter {pm.name} already exists in station {self.name}"
@@ -110,20 +243,22 @@ class Measurement:
 
         self.data = f"{self.datalogging}/{self.id}.zarr"
         self.arr = None
+        self.memory_store = None
+        self.disk_store = None
         self.station = station
-        logging.info(f"Measurement Location: {self.data}")
+        logger.info(f"Measurement Location: {self.data}")
 
     def get_installed_packages(self):
         try:
             pip_output = subprocess.check_output(
                 [sys.executable, "-m", "pip", "freeze"]
             ).decode()
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             pip_output = ""
 
         try:
             uv_output = subprocess.check_output(["uv", "pip", "freeze"]).decode()
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             uv_output = ""
 
         return pip_output + uv_output
@@ -148,9 +283,17 @@ class Measurement:
                 "unit": dependent.unit,
                 "label": dependent.label,
                 "instrument": dependent.instrument.name,
-                "instrument_snapshot": str(dependent.instrument.snapshot()),
+                # snapshots included in the gloabl metadata
+                # "instrument_snapshot": str(dependent.instrument.snapshot()),
             },
         )
+        for sweep in sweeps:
+            for param in sweep.parameter:
+                data_array.coords[param.name].attrs["instrument"] = (
+                    param.instrument.name
+                )
+                data_array.coords[param.name].attrs["unit"] = param.unit
+                data_array.coords[param.name].attrs["label"] = param.label
 
         data_array.data[:] = np.nan
         return data_array
@@ -168,12 +311,12 @@ class Measurement:
             try:
                 with open(f"{code_path}/{file}", "r") as f:
                     code_archive[file] = f.read()
-            except:
+            except Exception:
                 pass
 
         try:
             cryostat_name = socket.gethostname().split(".")[0].split("-")[1]
-        except:
+        except Exception:
             cryostat_name = "dummy"
 
         meta = {
@@ -185,7 +328,7 @@ class Measurement:
             "Sample Name": self.sample_name,
             "Experiment Name": self.experiment,
             "Requirements": self.get_installed_packages(),
-            "Code Archive": str(code_archive),
+            # "Code Archive": str(code_archive),
         }
 
         self.cryostat = meta["Cryostat"]
@@ -200,8 +343,13 @@ class Measurement:
             for sweep in sweeps
             for param in sweep.parameter
         }
-
-        return xr.Dataset(data_vars=data_vars, coords=coords, attrs=meta)
+        ds = xr.Dataset(data_vars=data_vars, coords=coords, attrs=meta)
+        for sweep in sweeps:
+            for param in sweep.parameter:
+                ds.coords[param.name].attrs["instrument"] = param.instrument.name
+                ds.coords[param.name].attrs["unit"] = param.unit
+                ds.coords[param.name].attrs["label"] = param.label
+        return ds
 
     def _push_gitlab(self, dataset, data_hash):
         """Push the data to the gitlab repository
@@ -214,7 +362,7 @@ class Measurement:
         git_ssh_cmd = f"ssh -i {git_ssh_identity_file}"
 
         if not os.path.exists(Path("~/.measurement-hashes/.git").expanduser()):
-            logging.info("Cloning the measurement-hashes repository")
+            logger.info("Cloning the measurement-hashes repository")
             Repo.clone_from(
                 url="git@git.pgi.fz-juelich.de:squad-lab/hashes.git",
                 to_path=self.git_repo,
@@ -225,14 +373,14 @@ class Measurement:
         repo = Repo(self.git_repo)
 
         if f"{self.cryostat}" not in repo.git.branch().split("* ")[1].split("\n"):
-            logging.info(f"Creating and checking out to branch: {self.cryostat}")
+            logger.info(f"Creating and checking out to branch: {self.cryostat}")
             try:
                 repo.git.checkout(b=f"{self.cryostat}")
             except GitCommandError:
                 repo.git.branch(d=f"{self.cryostat}")
                 repo.git.checkout(b=f"{self.cryostat}")
         else:
-            logging.info(f"Checking out to branch: {self.cryostat}")
+            logger.info(f"Checking out to branch: {self.cryostat}")
             repo.git.checkout(f"{self.cryostat}")
 
         hash_location = f"{self.git_repo}/{self.wafer_id}/{self.device_type}/{self.sample_name}/{self.experiment}"
@@ -242,7 +390,7 @@ class Measurement:
             "w",
         ) as f:
             f.write(f"Hash: {data_hash}\n\n{json.dumps(dataset.attrs, indent=2)}")
-        logging.info("Adding the measurement hash to the git repository")
+        logger.info("Adding the measurement hash to the git repository")
         repo.git.add(all=True)
         repo.git.commit("-m", f"Add new measurement hash: {self.id}")
         repo.git.push("--set-upstream", "origin", f"{self.cryostat}")
@@ -253,6 +401,7 @@ class Measurement:
         dependents: list,
         interrupt: Callable = lambda: False,
         rampdown_on_interrupt=False,
+        verbose: bool = False,
     ):
         """Run the measurement
 
@@ -313,7 +462,16 @@ class Measurement:
         }
         self.arr = self._make_dataset(sweeps, dependents)
         self.arr.attrs.update(meta)
-        self.arr.to_zarr(self.data, mode="a")
+        self.memory_store = zarr.MemoryStore()
+        self.disk_store = zarr.DirectoryStore(self.data)
+        self.arr.to_zarr(store=self.memory_store, mode="w")
+        if verbose:
+            logger.info("[measurement] Seeded dataset to in-memory store")
+        zarr.copy_store(self.memory_store, self.disk_store, if_exists="replace")
+        if verbose:
+            logger.info("[measurement] Seeded dataset to disk store")
+        register_memory_store(self.id, self.memory_store, disk_path=self.data)
+        logger.debug(f"Live Memory Location: memory://{self.id}")
 
         # Do the measurement
         try:
@@ -330,11 +488,11 @@ class Measurement:
                 "\n",
             )
 
-            logging.info(f"Starting the measurement with ID: {self.id}")
+            logger.info(f"Starting the measurement with ID: {self.id}")
             global bar
             bar = tqdm(
                 total=total_points,
-                ascii="*ᗧⵔ●︎",
+                ascii="*ᗧⵔ•",
                 ncols=10,
                 dynamic_ncols=True,
                 desc="Measurement Progress",
@@ -351,16 +509,19 @@ class Measurement:
                 bar=bar,
                 save_interval=self.save_interval,
                 interrupt=interrupt,
+                memory_store=self.memory_store,
+                disk_store=self.disk_store,
+                verbose=verbose,
             )
             bar.close()
 
             data_hash = dirhash(self.data, "sha256", excluded_extensions=["pyc"])
             self._push_gitlab(dataset, data_hash)
-            logging.info(f"Measurement completed and pushed with hash: {data_hash}")
+            logger.info(f"Measurement completed and pushed with hash: {data_hash}")
             return
 
         except KeyboardInterrupt:
-            logging.warning("Measurement interrupted, ramping donwn instruments")
+            logger.warning("Measurement interrupted, ramping down instruments")
             if rampdown_on_interrupt:
                 rampdown_sweeps = [
                     Sweep(sweep.parameter, sweep.parameter(), 0.0, num=100, delay=1e-2)
@@ -368,6 +529,8 @@ class Measurement:
                 ]
                 sweeper(rampdown_sweeps)
                 return 1
+        finally:
+            unregister_memory_store(self.id)
 
 
 def run(
@@ -383,6 +546,7 @@ def run(
     interrupt: Callable = lambda: None,
     rampdown_on_interrupt=False,
     location_return=False,
+    verbose: bool = False,
 ):
     """Helper function to run a measurement, refer to the Measuremment class for more details"""
     if not station:
@@ -398,6 +562,6 @@ def run(
         metadata=metadata,
     )
 
-    meas.run(sweeps, dependents, interrupt, rampdown_on_interrupt)
+    meas.run(sweeps, dependents, interrupt, rampdown_on_interrupt, verbose=verbose)
     if location_return:
         return meas.data
