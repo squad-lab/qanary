@@ -213,13 +213,13 @@ class Conductance(Instrument):
         )
 
     def get_current(self):
-        if type(self.current) == float or type(self.current) == int:
+        if isinstance(self.current, (float, int)):
             return self.current / self.curr_ampl
         else:
             return self.current() / self.curr_ampl
 
     def get_voltage(self):
-        if type(self.voltage) == float or type(self.voltage) == int:
+        if isinstance(self.voltage, (float, int)):
             return self.voltage / self.volt_ampl
         else:
             return self.voltage() / self.volt_ampl
