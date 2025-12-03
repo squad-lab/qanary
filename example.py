@@ -1,13 +1,13 @@
 # %%
+from qcodes.instrument import Instrument
 from qcodes.instrument_drivers.mock_instruments import (
     DummyInstrument,
     DummyInstrumentWithMeasurement,
 )
 
-from qcodes.instrument import Instrument
-from qcutils.sweep import Sweep
 from qcutils import measure
 from qcutils.measure import Station
+from qcutils.sweep import Sweep
 
 # %%
 Instrument.close_all()
