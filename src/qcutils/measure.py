@@ -562,6 +562,7 @@ class Measurement:
                 memory_store=self.memory_store,
                 disk_store=self.disk_store,
                 verbose=verbose,
+                buffered_sweep=buffered_sweep,
             )
             bar.close()
 

@@ -133,9 +133,9 @@ class NodeMFLI(BufferedNodeBase):
         # Normalize dependents list
         
         if isinstance(dependent, Sequence):
-            self.dependents = [dep.zi_node for dep in dependent]
+            self.dependents = [dep.zi_node.lower() for dep in dependent]
         else:
-            self.dependents = [dependent.zi_node]
+            self.dependents = [dependent.zi_node.lower()]
 
         self.daq.setInt(f"/{self.serial}/demods/0/enable", 1)
         self.daq.setDouble(f"/{self.serial}/demods/0/timeconstant", float(delay))
@@ -169,7 +169,7 @@ class NodeMFLI(BufferedNodeBase):
 
         self._subs = []
         for dep in self.dependents:
-            path = f"/{self.serial}/{dep}"
+            path = f"/{self.serial}{dep}"
             self.daq_module.subscribe(path)
             self._subs.append(path)
 
@@ -192,7 +192,7 @@ class NodeMFLI(BufferedNodeBase):
         arrays: list[np.ndarray] = []
         for dep in self.dependents:
             dep_split = dep.split("/")
-            data = result[self.serial][dep_split[0]][dep_split[1]][dep_split[2]][0][
+            data = result[self.serial][dep_split[1]][dep_split[2]][dep_split[3]][0][
                 "value"
             ]
             arrays.append(np.array(data).flatten())
@@ -279,7 +279,7 @@ class NodeQDAC2(BufferedNodeBase):
             step_time (int | float): Duration of the innermost sweep in seconds. num_points * step_time = total time of the whole sweep sequence
         """
         self._process_sweeps(sweep)
-
+        self.core.free_all_triggers()
         if trigger_type not in ["ramp", "step"]:
             raise ValueError('trigger_type must be either "ramp" or "step"')
 
