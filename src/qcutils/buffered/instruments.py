@@ -131,10 +131,11 @@ class NodeMFLI(BufferedNodeBase):
             count: Number of grids to acquire in single-shot mode (endless=False).
         """
         # Normalize dependents list
-        if isinstance(dependent, Sequence) and not isinstance(dependent, (str, bytes)):
-            self.dependents = list(dependent)
+        
+        if isinstance(dependent, Sequence):
+            self.dependents = [dep.zi_node for dep in dependent]
         else:
-            self.dependents = [str(dependent)]
+            self.dependents = [dependent.zi_node]
 
         self.daq.setInt(f"/{self.serial}/demods/0/enable", 1)
         self.daq.setDouble(f"/{self.serial}/demods/0/timeconstant", float(delay))

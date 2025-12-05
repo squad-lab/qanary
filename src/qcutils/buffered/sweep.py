@@ -218,8 +218,8 @@ def fetch_dependents_tree(
 
     # collect dependent metadata
     if should_fetch:
-        sweep_shape = tuple(state.get("sweep_shape", []))
-        sweeps = tuple(state.get("sweeps", []))
+        sweep_shape = list(state.get("sweep_shape", []))
+        sweeps = list(state.get("sweeps", []))
 
         for dep in payload.get("dependent", []):
             state["dependent_tree"][dep] = {
