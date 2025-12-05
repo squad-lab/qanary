@@ -131,7 +131,7 @@ class NodeMFLI(BufferedNodeBase):
             count: Number of grids to acquire in single-shot mode (endless=False).
         """
         # Normalize dependents list
-        
+
         if isinstance(dependent, Sequence):
             self.dependents = [dep.zi_node.lower() for dep in dependent]
         else:

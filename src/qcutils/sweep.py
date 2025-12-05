@@ -7,7 +7,7 @@ import zarr
 from qcodes.parameters import Parameter
 
 from qcutils.logger import get_logger
-from qcutils.buffered.sweep import arm_instruments, fetch_dependents_tree, fetch_results
+from qcutils.buffered.sweep import arm_instruments, fetch_results
 
 logger = get_logger(__name__)
 last_save = 0
@@ -326,7 +326,8 @@ def stepper(
                             idx = independents.index(p)
                         except ValueError:
                             logger.error(
-                                f"Independent parameter {p.name} not found in independents list, skipping")
+                                f"Independent parameter {p.name} not found in independents list, skipping"
+                            )
                             continue
                         slow_indexers[p.name] = sweep_cache[idx]
 
@@ -344,7 +345,7 @@ def stepper(
 
                     arr = dataset.data_vars[f"{dependent.name}"]
                     arr.loc[slow_indexers] = dependent()
-                    
+
                 if buffered_sweep is not None:
                     # Re-arm instruments for this buffered tree at every
                     # slow-step: instruments can only be read once after a sweep.
@@ -355,7 +356,7 @@ def stepper(
                     results_state = {}
                     fetch_results(buffered_sweep, state=results_state)
                     buffered_results_tree = results_state.get("results_tree", {})
-                    buffered_dependents = set(buffered_results_tree.keys())                
+                    buffered_dependents = set(buffered_results_tree.keys())
 
                 # Write buffered results into the dataset.
                 # For each buffered dependent, its DataArray has dimensions

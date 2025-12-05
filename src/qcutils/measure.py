@@ -311,7 +311,7 @@ class Measurement:
             sweeps = sweeps[:-1]
         else:
             buffered_sweep = None
-            
+
         code_path = Path(os.path.realpath(__file__)).parent
         code_archive = {}
         for file in os.listdir(code_path):
@@ -344,26 +344,28 @@ class Measurement:
             f"{dependent.name}": self._make_dataarray(sweeps, dependent)
             for dependent in dependents
         }
-        
+
         coords = {
             f"{param.name}": sweep.values
             for sweep in sweeps
             for param in sweep.parameter
         }
-        
+
         # Handle buffered dependents
-        if buffered_sweep:            
+        if buffered_sweep:
             for buffered_dependent in self.buffered_dependents_tree:
-                sweeps_full = sweeps + self.buffered_dependents_tree[buffered_dependent]["sweeps"]
+                sweeps_full = (
+                    sweeps + self.buffered_dependents_tree[buffered_dependent]["sweeps"]
+                )
                 data_vars[buffered_dependent.name] = self._make_dataarray(
                     sweeps_full, buffered_dependent
                 )
-                
+
                 for sweep in sweeps_full:
                     for param in sweep.parameter:
-                        coords[param.name] = sweep.values        
+                        coords[param.name] = sweep.values
         ds = xr.Dataset(data_vars=data_vars, coords=coords, attrs=meta)
-        
+
         for sweep in sweeps:
             for param in sweep.parameter:
                 ds.coords[param.name].attrs["instrument"] = param.instrument.name
@@ -440,7 +442,7 @@ class Measurement:
             sweeps = sweeps[:-1]
         else:
             buffered_sweep = None
-             
+
         # Get instrument snapshots for metadata
         independents = []
         instruments_snapshot = {
@@ -463,7 +465,7 @@ class Measurement:
             "Number of Points",
             "Delay (s)",
         ]
-        
+
         sweep_dims = 0
         for sweep in sweeps:
             sweep_metadata.append(
@@ -477,13 +479,14 @@ class Measurement:
             for param in sweep.parameter:
                 independents.append(param)
                 sweep_dims += 1
-                
 
         if buffered_sweep:
             self.buffered_dependents_tree = {}
             fetch_dependents_tree(buffered_sweep, state=self.buffered_dependents_tree)
             # original state consists of sweeps, their dims and everything. We only need the dependent_tree
-            self.buffered_dependents_tree = self.buffered_dependents_tree["dependent_tree"]
+            self.buffered_dependents_tree = self.buffered_dependents_tree[
+                "dependent_tree"
+            ]
             for buffered_dependent in self.buffered_dependents_tree:
                 for sweep in self.buffered_dependents_tree[buffered_dependent][
                     "sweeps"
@@ -507,10 +510,10 @@ class Measurement:
             "Sweeps": json.dumps({swm["Independent(s)"]: swm for swm in swm_list}),
             "Extra Metadata": json.dumps(self.extra_metadata),
         }
-        
+
         # make empty dataset with global dimensions and buffered dimensions
         self.arr = self._make_dataset(sweeps_complete, dependents)
-        
+
         self.arr.attrs.update(meta)
         self.memory_store = zarr.MemoryStore()
         self.disk_store = zarr.DirectoryStore(self.data)
@@ -571,8 +574,10 @@ class Measurement:
                 self._push_gitlab(dataset, data_hash)
                 logger.info(f"Measurement completed and pushed with hash: {data_hash}")
             except Exception as e:
-                logger.error(f"Did not push measurement hash to gitlab (upstream). Will try again after next measurement: {e}")
-                
+                logger.error(
+                    f"Did not push measurement hash to gitlab (upstream). Will try again after next measurement: {e}"
+                )
+
             return
 
         except KeyboardInterrupt:
@@ -585,7 +590,9 @@ class Measurement:
                 for sweep in self.buffered_dependents_tree:
                     for sw in self.buffered_dependents_tree[sweep]["sweeps"]:
                         rampdown_sweeps.append(
-                            Sweep(sw.parameter, sw.parameter(), 0.0, num=100, delay=1e-2)
+                            Sweep(
+                                sw.parameter, sw.parameter(), 0.0, num=100, delay=1e-2
+                            )
                         )
                 sweeper(rampdown_sweeps)
                 return 1
