@@ -470,7 +470,9 @@ class Measurement:
         zarr.copy_store(self.memory_store, self.disk_store, if_exists="replace")
         if verbose:
             logger.info("[measurement] Seeded dataset to disk store")
-        register_memory_store(self.id, self.memory_store, disk_path=self.data)
+        register_memory_store(
+            self.id, self.memory_store, disk_path=str(Path(self.data).resolve())
+        )
         logger.debug(f"Live Memory Location: memory://{self.id}")
 
         # Do the measurement
