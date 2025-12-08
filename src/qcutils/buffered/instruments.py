@@ -60,9 +60,7 @@ class BufferedNodeBase:
         self.endnode = False
         self.dims = len(self.sweeps)
 
-    def _process_dependents(
-        self, dependent: Parameter | Sequence[Parameter]
-    ):
+    def _process_dependents(self, dependent: Parameter | Sequence[Parameter]):
         """
         Process dependents
 
@@ -413,7 +411,7 @@ class NodeQDAC2(BufferedNodeBase):
         num: int | Sequence[int],
         delay: float,
         input_trigger: int = 1,
-        ) -> None:
+    ) -> None:
         """
         Register the measurement with the QDAC2
 
@@ -421,17 +419,15 @@ class NodeQDAC2(BufferedNodeBase):
             step_time (int or float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
         """
         self._process_dependents(dependent)
-        
+
         # TODO: Check that dependent is read_current_A, make it robust against parameter renames
-        
+
         # if the device has sweeps set, then trigger by internal trigger
         # if the device is acting as an end node, then trigger by external trigger
         if self.sweepnode:
             for dependent in self.dependents:
                 dependent.instrument.clear_measurements()
-                meas = dependent.instrument.measurement(
-                    aperture_s=delay
-                )
+                meas = dependent.instrument.measurement(aperture_s=delay)
                 meas.start_on(
                     self.arrangement.get_trigger_by_name(self.output_trigger_key)
                 )
