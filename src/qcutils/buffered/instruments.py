@@ -61,7 +61,7 @@ class BufferedNodeBase:
         self.dims = len(self.sweeps)
 
     def _process_dependents(
-        self, dependent: Parameter | Sequence[Parameter] | str | Sequence[str]
+        self, dependent: Parameter | Sequence[Parameter]
     ):
         """
         Process dependents
@@ -69,12 +69,12 @@ class BufferedNodeBase:
         Args:
             dependent (Parameter | Sequence[Parameter]): The dependent object to be used in the buffered sweep tree.
         """
-        if not isinstance(dependent, Sequence) or isinstance(dependent, (str, bytes)):
+        if not isinstance(dependent, Sequence):
             self.dependents = [dependent]
         else:
             self.dependents = dependent
 
-        self.sweepnode = False
+        # self.sweepnode = False
 
 
 class NodeMFLI(BufferedNodeBase):
@@ -108,7 +108,7 @@ class NodeMFLI(BufferedNodeBase):
 
     def register_dependent(
         self,
-        dependent: str | Sequence[str],
+        dependent: Union[Parameter, Sequence[Parameter]],
         num: int | Sequence[int],
         delay: float,
         input_trigger: int = 1,
@@ -407,27 +407,46 @@ class NodeQDAC2(BufferedNodeBase):
         if self.toplevel:
             sleep((self.num + 1) * self.delay)
 
-    def register_dependent(self, step_time: float):
+    def register_dependent(
+        self,
+        dependent: Union[Parameter, Sequence[Parameter]],
+        num: int | Sequence[int],
+        delay: float,
+        input_trigger: int = 1,
+        ) -> None:
         """
         Register the measurement with the QDAC2
 
         Args:
             step_time (int or float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
         """
+        self._process_dependents(dependent)
+        
+        # TODO: Check that dependent is read_current_A, make it robust against parameter renames
+        
         # if the device has sweeps set, then trigger by internal trigger
         # if the device is acting as an end node, then trigger by external trigger
-        for dependent in self.dependents:
-            assert dependent.name == "read_current_A", (
-                "Only read_current_A is supported as a dependent for QDAC2"
-            )
         if self.sweepnode:
             for dependent in self.dependents:
-                dependent.underlying_instrument().clear_measurements()
-                meas = dependent.underlying_instrument().measurement(
-                    aperture_s=step_time
+                dependent.instrument.clear_measurements()
+                meas = dependent.instrument.measurement(
+                    aperture_s=delay
                 )
                 meas.start_on(
-                    self.arrangement.get_trigger_by_name(list(self.triggers.keys())[0])
+                    self.arrangement.get_trigger_by_name(self.output_trigger_key)
                 )
         elif self.endnode:
             raise NotImplementedError("End node not implemented for QDAC2")
+
+    def fetch(self) -> list:
+        """
+        Fetch the measurement from the QDAC2
+
+        Returns:
+            list: List of the measured values
+        """
+        results = []
+        for dependent in self.dependents:
+            data = dependent.instrument.fetch_current_A()
+            results.append(np.array(data).flatten())
+        return results

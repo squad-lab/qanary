@@ -194,7 +194,7 @@ def arm_instruments(
 
 @parse_bufsweep_tree
 def fetch_dependents_tree(
-    node, payload, *, parent, path, instrument, state, only_leaves=True, **kwargs
+    node, payload, *, parent, path, instrument, state, only_leaves=False, **kwargs
 ):
     """
     Visitor to build a dependent-tree summary.
@@ -230,7 +230,7 @@ def fetch_dependents_tree(
 
 @parse_bufsweep_tree
 def fetch_results(
-    node, payload, *, parent, path, instrument, state, only_leaves=True, **kwargs
+    node, payload, *, parent, path, instrument, state, only_leaves=False, **kwargs
 ):
     """
     Visitor to build a dependent-tree summary.
