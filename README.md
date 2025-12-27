@@ -91,4 +91,3 @@ uv add --dev .
 ## Authors
 
 - Spandan Anupam: [s.anupam@fz-juelich.de](mailto:s.anupam@fz-juelich.de)
-- Lino Visser: [l.visser@fz-juelich.de](mailto:l.visser@fz-juelich.de)

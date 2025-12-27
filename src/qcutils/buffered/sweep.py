@@ -1,5 +1,6 @@
 from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple
+
 from qcutils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -173,6 +174,7 @@ def arm_instruments(
             input_trigger=payload.get("input_trigger"),
             output_trigger=payload.get("output_trigger"),
             trigger_type=payload.get("trigger_type", "step"),
+            trigger_width=payload.get("trigger_width", 1e-4),
         )
         num_points *= points_new
         step_time = inner_step

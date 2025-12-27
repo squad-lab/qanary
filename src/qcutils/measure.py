@@ -380,42 +380,60 @@ class Measurement:
             dataset (xarray.Dataset): xarray dataset
             data_hash (str): Hash of the data
         """
-        git_ssh_identity_file = str(PurePosixPath(Path.home() / ".ssh" / "id_rsa"))
+        git_ssh_identity_file = str(Path.home() / ".ssh" / "id_rsa")
         git_ssh_cmd = f"ssh -i {git_ssh_identity_file}"
 
-        if not os.path.exists(Path("~/.measurement-hashes/.git").expanduser()):
+        repo_path = Path(self.git_repo)
+        if not (repo_path / ".git").exists():
             logger.info("Cloning the measurement-hashes repository")
             Repo.clone_from(
                 url="git@git.pgi.fz-juelich.de:squad-lab/hashes.git",
-                to_path=self.git_repo,
+                to_path=str(repo_path),
                 single_branch=True,
                 branch=self.cryostat,
                 env=dict(GIT_SSH_COMMAND=git_ssh_cmd),
             )
-        repo = Repo(self.git_repo)
 
-        if f"{self.cryostat}" not in repo.git.branch().split("* ")[1].split("\n"):
-            logger.info(f"Creating and checking out to branch: {self.cryostat}")
-            try:
-                repo.git.checkout(b=f"{self.cryostat}")
-            except GitCommandError:
-                repo.git.branch(d=f"{self.cryostat}")
-                repo.git.checkout(b=f"{self.cryostat}")
-        else:
-            logger.info(f"Checking out to branch: {self.cryostat}")
-            repo.git.checkout(f"{self.cryostat}")
+        repo = Repo(str(repo_path))
 
-        hash_location = f"{self.git_repo}/{self.wafer_id}/{self.device_type}/{self.sample_name}/{self.experiment}"
-        os.makedirs(hash_location, exist_ok=True)
-        with open(
-            f"{hash_location}/{self.id}",
-            "w",
-        ) as f:
-            f.write(f"Hash: {data_hash}\n\n{json.dumps(dataset.attrs, indent=2)}")
-        logger.info("Adding the measurement hash to the git repository")
-        repo.git.add(all=True)
-        repo.git.commit("-m", f"Add new measurement hash: {self.id}")
-        repo.git.push("--set-upstream", "origin", f"{self.cryostat}")
+        with repo.git.custom_environment(GIT_SSH_COMMAND=git_ssh_cmd):
+            # Make sure we know about remote branches
+            repo.git.fetch("origin")
+
+            local_branches = [h.name for h in repo.heads]
+            remote_branches = repo.git.branch("-r").splitlines()
+
+            if self.cryostat in local_branches:
+                logger.info(f"Checking out branch: {self.cryostat}")
+                repo.git.checkout(self.cryostat)
+            elif any(f"origin/{self.cryostat}" in rb for rb in remote_branches):
+                logger.info(f"Checking out tracking branch: {self.cryostat}")
+                repo.git.checkout("-b", self.cryostat, f"origin/{self.cryostat}")
+            else:
+                logger.info(f"Creating new branch: {self.cryostat}")
+                repo.git.checkout("-b", self.cryostat)
+
+            hash_location = (
+                repo_path
+                / self.wafer_id
+                / self.device_type
+                / self.sample_name
+                / self.experiment
+            )
+            hash_location.mkdir(parents=True, exist_ok=True)
+
+            out_file = hash_location / str(self.id)
+            out_file.write_text(
+                f"Hash: {data_hash}\n\n{json.dumps(dataset.attrs, indent=2)}"
+            )
+
+            repo.git.add(all=True)
+
+            if repo.is_dirty(untracked_files=True):
+                repo.git.commit("-m", f"Add new measurement hash: {self.id}")
+                repo.git.push("--set-upstream", "origin", self.cryostat)
+            else:
+                logger.info("No changes to commit; skipping push.")
 
     def run(
         self,

@@ -242,7 +242,13 @@ def stepper(
         verbose: Enables verbose logging of persistence actions when True
         buffered_sweep: Optional buffered sweep tree describing fast, instrument-internal sweeps
     """
-    sweep = sweeps[len(sweeps) - depth]
+    global last_save
+    depth = int(depth)
+
+    if buffered_sweep is None and len(sweeps) == 1 and not hasattr(sweeps[0], "values"):
+        buffered_sweep = sweeps[0]
+        sweeps = []
+        depth = 1
 
     def _persist_memory():
         if memory_store is None:
@@ -274,6 +280,48 @@ def stepper(
                 logger.info(f"[stepper._persist_disk] Saved dataset to {data_location}")
 
     try:
+        if len(sweeps) == 0:
+            slow_indexers = {}
+
+            buffered_results_tree = {}
+            buffered_dependents = set()
+
+            for dependent in dependents:
+                if dependent in buffered_dependents:
+                    logger.error(
+                        f"Dependent {dependent.name} is provided by buffered sweep; skipping direct read to avoid double-reading."
+                    )
+                    continue
+
+                arr = dataset.data_vars[f"{dependent.name}"]
+                arr.loc[slow_indexers] = dependent()
+
+            if buffered_sweep is not None:
+                toplevel = arm_instruments(buffered_sweep)
+                toplevel.run_sweep()
+
+                results_state = {}
+                fetch_results(buffered_sweep, state=results_state)
+                buffered_results_tree = results_state.get("results_tree", {})
+                buffered_dependents = set(buffered_results_tree.keys())
+
+            for dep, entry in buffered_results_tree.items():
+                arr = dataset.data_vars[f"{dep.name}"]
+                arr.loc[slow_indexers] = entry["result"]
+
+            bar.update(1)
+
+            if last_save == 0 or (time() - last_save > save_interval):
+                last_save = time()
+                _persist_memory()
+                _persist_disk()
+
+            _persist_memory()
+            _persist_disk()
+            return dataset
+
+        sweep = sweeps[len(sweeps) - depth]
+
         for idx, sweep_point in enumerate(sweep.values):
             if idx == 0:
                 sleep(sweep.start_delay)
@@ -284,7 +332,6 @@ def stepper(
 
             else:
                 for param in sweep.parameter:
-                    # set the parameter to the setpoint
                     if parallel_sweep:
                         Thread(target=lambda: param(sweep_point)).start()
                     else:
@@ -368,10 +415,8 @@ def stepper(
 
                 bar.update(1)
 
-                global last_save
                 if last_save == 0 or (time() - last_save > save_interval):
                     last_save = time()
-
                     # NOTE: Writing dataset to MemoryStore as well as DiskStore
                     _persist_memory()
                     _persist_disk()

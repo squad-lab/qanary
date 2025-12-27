@@ -88,6 +88,9 @@ class NodeMFLI(BufferedNodeBase):
         register_dependent(...)  # config + subscribe + execute()
         ... run your QDAC sweep to generate triggers ...
         fetch()                  # wait for completion and read data
+
+    NOTE:
+    Minimum trigger width is 1e-4s. Set the trigger width in the parent instrument accordingly.
     """
 
     def __init__(self, inst: Instrument, *args, **kwargs) -> None:
@@ -199,43 +202,99 @@ class NodeMFLI(BufferedNodeBase):
 
 
 class NodeKeysightDMM(BufferedNodeBase):
-    def __init__(
-        self, dependent: Union[Parameter, Sequence[Parameter]] = None, *args, **kwargs
-    ) -> None:
-        super().__init__(inst=None, *args, **kwargs)
+    """
+    Keysight 344xxA DMM node for a buffered sweep tree.
 
-    def register_dependent(
-        self, num_points: int, step_time: int | float, input_trigger: int = 1
-    ) -> None:
+    - Uses the DMM's internal reading memory.
+    - Acquisition is triggered by an external trigger source (EXT).
+    - Supports 1D and 2D buffered acquisitions:
+        rows := number of points acquired per trigger (inner dimension)
+        cols := number of trigger events (outer dimension)
+
+    Typical flow:
+        register_dependent(...)  # configure triggering, timing, and integration
+        ... run external sweep device to generate triggers ...
+        fetch()                  # read out buffered data
+
+    NOTE:
+    Minimum trigger width is 1e-3s. Set the trigger width in the parent instrument accordingly.
+    """
+
+    def __init__(self, inst: Instrument, *args, **kwargs) -> None:
+        super().__init__(inst=inst, *args, **kwargs)
+
+    def _set_nplc(self, delay: int | float) -> None:
         """
-        Register the measurement with the Keysight DMM
+        Set the DMM integration time (NPLC) such that it fits within the
+        requested delay time.
 
         Args:
-            num_points (int): Number of points in the sweep
-            step_time (int | float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
-            input_trigger (int): Input trigger for the Keysight DMM. Can only be 1 (external trigger) or any other value for continuoust triggering
+            delay (int | float): Available measurement time per point in seconds.
         """
-        self.core.aperture_time(step_time)
-        self.core.timetrace_dt(num_points * step_time)
-        self.core.timetrace_npts(num_points)
-        if input_trigger == 1:
-            self.core.trigger.source("EXT")
+        nplc_list = self.core.NPLC_list
+        for nplc in nplc_list:
+            if delay > nplc / self.core.line_frequency():
+                self.core.NPLC(nplc)
+                return
+
+    def register_dependent(
+        self,
+        dependent: Union[Parameter, Sequence[Parameter], None],
+        num: int | Sequence[int],
+        delay: int | float,
+        input_trigger: int = 1,
+    ) -> None:
+        """
+        Configure the Keysight DMM for a buffered, externally triggered acquisition.
+
+        Args:
+            dependent (Parameter | Sequence[Parameter] | None):
+                Dependent parameter(s) associated with this node.
+            num (int | Sequence[int]):
+                Number of points. For 2D acquisitions, pass (rows, cols) where:
+                    rows := points acquired per trigger
+                    cols := number of trigger events
+            delay (int | float):
+                Step time in seconds. Used for integration time and sample timing.
+            input_trigger (int):
+                External trigger selector (kept for interface compatibility).
+        """
+        self._process_dependents(dependent)
+        self.num = num
+
+        if isinstance(num, Sequence) and not isinstance(num, (str, bytes)):
+            rows, cols = int(num[0]), int(num[1])
         else:
-            self.core.trigger.source("IMM")
-        self.core.trigger.count("INF")
-        self.core.trigger.delay(0.0)
-        self.core.sample.count(1)
-        self.core.sample.pretrigger_count(0)
+            rows, cols = 1, int(num)
+
+        self.core.trigger.source("EXT")
+        self.core.sample.timer(delay)
+        self.core.sample.count(rows)
+        self.core.trigger.count(cols)
+
+        self._set_nplc(delay)
         self.core.init_measurement()
 
-    def fetch(self) -> list:
+    def fetch(self) -> list[np.ndarray]:
         """
-        Fetch the measurement from the Keysight DMM
+        Fetch buffered measurements from the Keysight DMM.
+
         Returns:
-            list: List of the measured values
+            list[np.ndarray]: List containing a single flattened array of
+            measured values.
         """
-        result = self.core.fetch()
-        print(result)
+        if isinstance(self.num, Sequence) and not isinstance(self.num, (str, bytes)):
+            num = int(self.num[0]) * int(self.num[1])
+        else:
+            num = int(self.num)
+
+        with self.core.timeout.set_to(num):
+            data = self.core.fetch()
+            self.core.trigger.source("IMM")
+            self.core.sample.timer("MIN")
+            self.core.sample.count(1)
+            self.core.trigger.count(1)
+            return [np.asarray(data).flatten()]
 
 
 class NodeQDAC2(BufferedNodeBase):
@@ -254,7 +313,6 @@ class NodeQDAC2(BufferedNodeBase):
         """
         super().__init__(inst=inst, *args, **kwargs)
         self.contacts = {}
-        self._trigger_width = 1e-4
 
     def register_sweep(
         self,
@@ -262,6 +320,7 @@ class NodeQDAC2(BufferedNodeBase):
         input_trigger: int = None,
         output_trigger: int = None,
         trigger_type: str = "ramp",
+        trigger_width: float = 1e-4,
     ):
         """
         Register the 1D/2D buffered sweep with triggers for the QDAC2
@@ -277,6 +336,13 @@ class NodeQDAC2(BufferedNodeBase):
             step_time (int | float): Duration of the innermost sweep in seconds. num_points * step_time = total time of the whole sweep sequence
         """
         self._process_sweeps(sweep)
+        self._trigger_width = trigger_width
+
+        if self.delay < self._trigger_width:
+            raise ValueError(
+                f"Delay {self.delay} s is less than trigger width {self._trigger_width} s"
+            )
+
         self.core.free_all_triggers()
         if trigger_type not in ["ramp", "step"]:
             raise ValueError('trigger_type must be either "ramp" or "step"')
