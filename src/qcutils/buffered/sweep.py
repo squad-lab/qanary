@@ -241,7 +241,9 @@ def fetch_results(
     children = payload.get("nodes", [])
     is_leaf = not children
     has_fetch = hasattr(instrument, "fetch") and callable(instrument.fetch)
-    should_fetch = has_fetch and (is_leaf if only_leaves else True)
+    should_fetch = (
+        has_fetch and (is_leaf if only_leaves else True) and ("dependent" in payload)
+    )
 
     # global collector
     state.setdefault("results_tree", {})
