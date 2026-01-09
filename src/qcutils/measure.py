@@ -6,23 +6,23 @@ import subprocess
 import sys
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Union
 
 import numpy as np
 import xarray as xr
 import zarr
 from checksumdir import dirhash
-from git import GitCommandError, Repo
+from git import Repo
 from qcodes.parameters import Parameter
 from tabulate import tabulate
 from tqdm import tqdm
 
 # Local imports
 from qcutils import live_db, live_server
+from qcutils.buffered.sweep import fetch_dependents_tree
 from qcutils.logger import get_logger
 from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
-from qcutils.buffered.sweep import fetch_dependents_tree
 
 logger = get_logger(__name__)
 
@@ -205,6 +205,7 @@ class Measurement:
         station: Station,
         data_location: str,
         metadata: dict,
+        fridge_name: str = "",
         save_interval: float = 0.1,
         git_repo: str = "~/.measurement-hashes",
     ):
@@ -232,7 +233,10 @@ class Measurement:
         os.makedirs(self.datalogging, exist_ok=True)
 
         self.save_interval = save_interval
-        self.git_repo = os.path.expanduser(git_repo)
+        if not fridge_name:
+            self.git_repo = os.path.expanduser(git_repo)
+        else:
+            self.git_repo = os.path.expanduser(f"{git_repo}-{fridge_name}")
 
         data_files = os.listdir(self.datalogging)
         data_files = [
@@ -247,6 +251,7 @@ class Measurement:
         self.memory_store = None
         self.disk_store = None
         self.station = station
+        self.fridge_name = fridge_name
         logger.info(f"Measurement Location: {self.data}")
 
     def get_installed_packages(self):
@@ -322,13 +327,16 @@ class Measurement:
                 pass
 
         try:
-            cryostat_name = socket.gethostname().split(".")[0].split("-")[1]
+            if self.fridge_name:
+                self.cryostat = self.fridge_name
+            else:
+                self.cryostat = socket.gethostname().split(".")[0].split("-")[1]
         except Exception:
-            cryostat_name = "dummy"
+            self.cryostat = "dummy"
 
         meta = {
             "Timestamp": datetime.datetime.now().isoformat(),
-            "Cryostat": cryostat_name,
+            "Cryostat": self.cryostat,
             "Measurement ID": self.id,
             "Wafer ID": self.wafer_id,
             "Device Type": self.device_type,
@@ -337,8 +345,6 @@ class Measurement:
             "Requirements": self.get_installed_packages(),
             # "Code Archive": str(code_archive),
         }
-
-        self.cryostat = meta["Cryostat"]
 
         data_vars = {
             f"{dependent.name}": self._make_dataarray(sweeps, dependent)
@@ -374,30 +380,32 @@ class Measurement:
         return ds
 
     def _push_gitlab(self, dataset, data_hash):
-        """Push the data to the gitlab repository
-
-        Args:
-            dataset (xarray.Dataset): xarray dataset
-            data_hash (str): Hash of the data
-        """
+        """Push the data to the gitlab repository"""
         git_ssh_identity_file = str(Path.home() / ".ssh" / "id_rsa")
-        git_ssh_cmd = f"ssh -i {git_ssh_identity_file}"
+        known_hosts = str(Path.home() / ".ssh" / "known_hosts")
+
+        git_ssh_cmd = (
+            f"ssh -i {git_ssh_identity_file} "
+            f"-o StrictHostKeyChecking=accept-new "
+            f"-o UserKnownHostsFile={known_hosts}"
+        )
 
         repo_path = Path(self.git_repo)
+
         if not (repo_path / ".git").exists():
             logger.info("Cloning the measurement-hashes repository")
+
             Repo.clone_from(
                 url="git@git.pgi.fz-juelich.de:squad-lab/hashes.git",
                 to_path=str(repo_path),
                 single_branch=True,
-                branch=self.cryostat,
+                branch="main",
                 env=dict(GIT_SSH_COMMAND=git_ssh_cmd),
             )
 
         repo = Repo(str(repo_path))
 
         with repo.git.custom_environment(GIT_SSH_COMMAND=git_ssh_cmd):
-            # Make sure we know about remote branches
             repo.git.fetch("origin")
 
             local_branches = [h.name for h in repo.heads]
@@ -634,6 +642,8 @@ def run(
     rampdown_on_interrupt=False,
     location_return=False,
     verbose: bool = False,
+    *args,
+    **kwargs,
 ):
     """Helper function to run a measurement, refer to the Measuremment class for more details"""
     if not station:
@@ -647,6 +657,8 @@ def run(
         station=station,
         data_location=data_location,
         metadata=metadata,
+        *args,
+        **kwargs,
     )
 
     meas.run(sweeps, dependents, interrupt, rampdown_on_interrupt, verbose=verbose)
