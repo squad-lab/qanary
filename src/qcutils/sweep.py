@@ -1,13 +1,13 @@
 from threading import Thread
 from time import sleep, time
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence
 
 import numpy as np
 import zarr
 from qcodes.parameters import Parameter
 
-from qcutils.logger import get_logger
 from qcutils.buffered.sweep import arm_instruments, fetch_results
+from qcutils.logger import get_logger
 
 logger = get_logger(__name__)
 last_save = 0
@@ -16,11 +16,11 @@ last_save = 0
 class Sweep:
     def __init__(
         self,
-        parameter: Union[Parameter, Sequence[Parameter]],
-        start: Union[int, float],
-        stop: Union[int, float],
-        num: Union[int, float] = 0.0,
-        step: Union[int, float] = 0.0,
+        parameter: Parameter | Sequence[Parameter],
+        start: int | float,
+        stop: int | float,
+        num: int | float = 0.0,
+        step: int | float = 0.0,
         delay: float = 0.0,
         start_delay: float = 0.0,
         ramprate: float = 0.0,
@@ -39,9 +39,6 @@ class Sweep:
         if not (step or num):
             logger.error("Either one of step or num has to be set")
             raise ValueError("Either one of step or num has to be set")
-        if not (delay or ramprate):
-            logger.error("Either one of delay or ramprate has to be set")
-            raise ValueError("Either one of delay or ramprate has to be set")
 
         if step:
             num = int(abs(start - stop) / step)
@@ -63,11 +60,11 @@ class Sweep:
 class CircularSweep:
     def __init__(
         self,
-        parameter: Union[Parameter, Sequence[Parameter]],
-        start: Union[int, float],
-        stop: Union[int, float],
-        num: Union[int, float] = 0.0,
-        step: Union[int, float] = 0.0,
+        parameter: Parameter | Sequence[Parameter],
+        start: int | float,
+        stop: int | float,
+        num: int | float = 0.0,
+        step: int | float = 0.0,
         delay: float = 0.0,
         ramprate: float = 0.0,
         repetitions: int = 1,
@@ -110,6 +107,63 @@ class CircularSweep:
         self.delay = delay
 
 
+class SegmentedSweep:
+    def __init__(
+        self,
+        parameter: Parameter,
+        start: int | float,
+        stop: int | float,
+        num: int | float,
+        center: int | float,
+        center_width: int | float,
+        factor: float = 10.0,
+    ) -> None:
+        """Sweep class to define a resonator parameter sweep, where the parameter goes from start to stop with finer steps around center
+
+        Args:
+            parameter: qcodes parameter to sweep
+            start: start point
+            stop: stop point
+            num: number of points
+            center: center point of the resonator
+            center_width: width around center with finer steps
+            factor: Scaling factor for the center width region
+
+        """
+
+        # build the three segments of the sweep
+        n_p = num / (stop - start + center_width * (factor - 1))
+
+        self.segments = [
+            {
+                "start": start,
+                "stop": center - center_width / 2,
+                "points": n_p * (center - center_width / 2 - start),
+            },
+            {
+                "start": center - center_width / 2,
+                "stop": center + center_width / 2,
+                "points": factor * n_p * center_width,
+            },
+            {
+                "start": center + center_width / 2,
+                "stop": stop,
+                "points": n_p * (stop - center - center_width / 2),
+            },
+        ]
+
+        self.parameter = parameter
+        self.values = np.array([])
+        for segment in self.segments:
+            seg_values = np.linspace(
+                segment["start"], segment["stop"], int(segment["points"])
+            )
+            self.values = np.concatenate((self.values, seg_values))
+        self.start = start
+        self.stop = stop
+        self.num = num
+
+
 def _sweep_param(sweep: Sweep = None, override: list = None):
     """Does a single sweep
 
@@ -129,7 +183,7 @@ def _sweep_param(sweep: Sweep = None, override: list = None):
         sleep(delay)
 
 
-def sweeper(sweeps: Union[Sweep, Sequence[Sweep]], parallel: bool = False):
+def sweeper(sweeps: Sweep | Sequence[Sweep], parallel: bool = False):
     """Sweeps through anything without making a measurement
 
     Args:
@@ -176,7 +230,7 @@ def sweeper(sweeps: Union[Sweep, Sequence[Sweep]], parallel: bool = False):
                 _sweep_param(sweeps)
 
 
-def rampdown(parameters: Union[Parameter, Sequence[Parameter]], ramprate: float = None):
+def rampdown(parameters: Parameter | Sequence[Parameter], ramprate: float = None):
     """Ramp random parameters to zero
 
     Arg:
@@ -209,7 +263,7 @@ def rampdown(parameters: Union[Parameter, Sequence[Parameter]], ramprate: float 
 def stepper(
     dataset,
     data_location: str,
-    depth: Union[int, float],
+    depth: int | float,
     sweeps: Sequence,
     independents: Sequence,
     dependents: Sequence,

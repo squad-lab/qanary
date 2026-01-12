@@ -474,16 +474,28 @@ class Measurement:
         instruments_snapshot = {
             inst.name: inst.snapshot() for inst in self.station.instruments
         }
-        parameters_snapshot = {
-            param.name: {
-                "value": param(),
-                "unit": param.unit,
-                "label": param.label,
+        for param in self.station.parameters:
+            param_val = param()
+            if isinstance(param_val, np.ndarray):
+                param_val = param_val.tolist()
+
+            param_val_str = str(param_val)
+            if len(param_val_str) > 50:
+                param_val_str = param_val_str[:50] + "..."
+
+            parameters_snapshot = {
+                param.name: {
+                    "value": param_val_str,
+                    "unit": param.unit,
+                    "label": param.label,
+                }
+                for param in self.station.parameters
             }
-            for param in self.station.parameters
-        }
 
         # Get sweep metadata for pretty printed table
+        def _fmt_range(values, ndp: int = 3) -> str:
+            return f"{values[0]:.{ndp}e} to {values[-1]:.{ndp}e}"
+
         sweep_metadata = []
         sweep_metadata_headers = [
             "Independent(s)",
@@ -497,7 +509,7 @@ class Measurement:
             sweep_metadata.append(
                 [
                     ",".join([param.label for param in sweep.parameter]),
-                    f"{sweep.values[0]} to {sweep.values[-1]}",
+                    _fmt_range(sweep.values),
                     len(sweep.values),
                     sweep.delay,
                 ]
@@ -509,18 +521,23 @@ class Measurement:
         if buffered_sweep:
             self.buffered_dependents_tree = {}
             fetch_dependents_tree(buffered_sweep, state=self.buffered_dependents_tree)
-            # original state consists of sweeps, their dims and everything. We only need the dependent_tree
             self.buffered_dependents_tree = self.buffered_dependents_tree[
                 "dependent_tree"
             ]
+
+            seen = set()
             for buffered_dependent in self.buffered_dependents_tree:
                 for sweep in self.buffered_dependents_tree[buffered_dependent][
                     "sweeps"
                 ]:
+                    if id(sweep) in seen:
+                        continue
+                    seen.add(id(sweep))
+
                     sweep_metadata.append(
                         [
                             ",".join([param.label for param in sweep.parameter]),
-                            f"{sweep.values[0]} to {sweep.values[-1]}",
+                            _fmt_range(sweep.values),
                             len(sweep.values),
                             sweep.delay,
                         ]
@@ -528,6 +545,17 @@ class Measurement:
                     for param in sweep.parameter:
                         independents.append(param)
                         sweep_dims += 1
+
+        parameters_snapshot_headers = ["Name", "Label", "Value", "Unit"]
+        parameters_snapshot_table = [
+            [
+                param.name,
+                parameters_snapshot[param.name]["label"],
+                parameters_snapshot[param.name]["value"],
+                parameters_snapshot[param.name]["unit"],
+            ]
+            for param in self.station.parameters
+        ]
 
         swm_list = [dict(zip(sweep_metadata_headers, swm)) for swm in sweep_metadata]
         meta = {
@@ -560,6 +588,16 @@ class Measurement:
             for sweep in sweeps:
                 total_points *= len(sweep.values)
 
+            logger.info("Registered Parameters:")
+            print(
+                "\n",
+                tabulate(
+                    parameters_snapshot_table,
+                    headers=parameters_snapshot_headers,
+                ),
+                "\n",
+            )
+            logger.info("Sweeps Summary:")
             print(
                 "\n",
                 tabulate(

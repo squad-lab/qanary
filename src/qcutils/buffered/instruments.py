@@ -512,3 +512,80 @@ class NodeQDAC2(BufferedNodeBase):
             data = dependent.instrument.fetch_current_A()
             results.append(np.array(data).flatten())
         return results
+
+
+class NodeKeysightVNA(BufferedNodeBase):
+    """
+    Keysight VNA node for a buffered sweep tree.
+    """
+
+    def __init__(self, inst: Instrument, *args, **kwargs):
+        super().__init__(inst=inst, *args, **kwargs)
+
+    def register_sweep(
+        self,
+        sweep: Sweep,
+        input_trigger: int = None,
+        output_trigger: int = None,
+        trigger_type: str = None,
+        trigger_width: float = None,
+    ):
+        """
+        Register a buffered frequency sweep on the VNA.
+
+        Args:
+            sweep (Sweep): qcutils Sweep (only 1D supported).
+            input_trigger (int, optional): Not supported.
+            output_trigger (int, optional): Not supported.
+            trigger_type (str, optional): Not supported.
+            trigger_width (float, optional): Not supported.
+
+        Returns:
+            tuple: (trigger_type, num_points, step_time). Step time is None.
+        """
+        self._process_sweeps(sweep)
+
+        if len(self.sweeps) != 1:
+            raise NotImplementedError("Only one sweep supported")
+
+        num_points = self.num
+        sw = self.sweeps[0]
+        self.core.frequency(sw.values)
+        return None, num_points, None
+
+    def register_dependent(
+        self,
+        dependent: Parameter | list[Parameter] | None,
+        num: int | list[int],
+        delay: int | float,
+        input_trigger: int = None,
+    ) -> None:
+        """
+        Register S-parameter dependents to be measured by the VNA.
+
+        Args:
+            dependent (Parameter | list[Parameter] | None): Dependent parameter(s)
+                created by the VNA driver (must have `._sparam` attribute).
+            num (int | list[int]): Number of points expected (stored for fetch).
+            delay (int | float): Step time (unused by the VNA node).
+            input_trigger (int, optional): Not supported.
+        """
+        self._process_dependents(dependent)
+        self.num = num
+
+        self.core.configure_active_s_parameters(
+            [dep._sparam for dep in self.dependents]
+        )
+
+    def run_sweep(self):
+        """Run the VNA sweep."""
+        self.core.traces[0].run_sweep()
+
+    def fetch(self):
+        """
+        Fetch dependent data.
+
+        Returns:
+            list[np.ndarray]: One array per dependent.
+        """
+        return [dep() for dep in self.dependents]
