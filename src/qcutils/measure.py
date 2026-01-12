@@ -156,6 +156,23 @@ def list_live_measurements(include_registry: bool = True) -> Dict[str, LiveDatas
 bar = None
 
 
+def _sanitize_for_json(obj):
+    """
+    Recursively convert numpy arrays in a structure to lists,
+    so the result is JSON-serializable.
+    """
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+
+    return obj
+
+
 class ParameterMixin:
     def __init__(
         self,
@@ -558,8 +575,14 @@ class Measurement:
         ]
 
         swm_list = [dict(zip(sweep_metadata_headers, swm)) for swm in sweep_metadata]
+
+        try:
+            inst_snap_json = json.dumps(instruments_snapshot)
+        except TypeError:
+            inst_snap_json = json.dumps(_sanitize_for_json(instruments_snapshot))
+
         meta = {
-            "Instruments Snapshot": json.dumps(instruments_snapshot),
+            "Instruments Snapshot": inst_snap_json,
             "Parameters Snapshot": json.dumps(parameters_snapshot),
             "Sweeps": json.dumps({swm["Independent(s)"]: swm for swm in swm_list}),
             "Extra Metadata": json.dumps(self.extra_metadata),
