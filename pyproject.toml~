@@ -21,7 +21,7 @@ dependencies = [
   "scipy>=1.15.2",
   "setuptools>=78.1.0",
   "zarr==2.18.4",
-  "numcodecs==0.15.0",
+  "numcodecs>=0.16.5",
   "zhinst==25.10.0",
   "zhinst-qcodes>=0.6.0",
   "pillow>=11.2.1",
