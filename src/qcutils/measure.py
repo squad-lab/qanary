@@ -23,6 +23,7 @@ from qcutils import live_db, live_server
 from qcutils.buffered.sweep import fetch_dependents_tree
 from qcutils.logger import get_logger
 from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
+from qcutils.parameters import ParameterMixin
 
 logger = get_logger(__name__)
 
@@ -171,24 +172,6 @@ def _sanitize_for_json(obj):
         return [_sanitize_for_json(v) for v in obj]
 
     return obj
-
-
-class ParameterMixin:
-    def __init__(
-        self,
-        param: Parameter,
-        name: str = None,
-        label: str = None,
-        param_type: str = "gate",
-    ):
-        self.__dict__.update(param.__dict__)
-        self.__class__ = param.__class__
-
-        self.param_type = param_type
-        if name:
-            self._short_name = name
-        if label:
-            self._label = label
 
 
 class Station:
