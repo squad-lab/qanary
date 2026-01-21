@@ -10,9 +10,11 @@ from drivers.squad.helpers.helpers import ShellInstrument
 
 if __name__ == "__main__":
     dummy = ShellInstrument("dummy", {})
+    dummy2 = ShellInstrument("dummy2", {})
 
     v1 = None
     v2 = None
+    v3 = None
 
     dummy.add_parameter(
         "ch1",
@@ -30,8 +32,18 @@ if __name__ == "__main__":
         get_cmd=lambda: v2,
     )
 
+    dummy2.add_parameter(
+        "ch3",
+        label="Channel 3",
+        unit="V",
+        set_cmd=lambda value: globals().update(v3=value),
+        get_cmd=lambda: v3,
+    )
+
+
     multi_param = MultiChannelParameter(
         channels=[dummy.ch1, dummy.ch2],
+        name="custom_multi_param_1",
     )
 
     # test outputs
@@ -47,6 +59,7 @@ if __name__ == "__main__":
 
 
 
+
     # virtual gate test
     print("\nVirtual Gate Test:")
 
@@ -55,6 +68,7 @@ if __name__ == "__main__":
 
     vg_parallel = VirtualGate(
         gates=[dummy.ch1, dummy.ch2],
+        name ="vg_parallel",
         factors=[np.cos(theta), np.sin(theta)],
         offsets=[1, 1],
         unit="V",
@@ -62,6 +76,7 @@ if __name__ == "__main__":
 
     vg_perpendicular = VirtualGate(
         gates=[dummy.ch1, dummy.ch2],
+        name ="vg_perpendicular",
         factors=[-np.sin(theta), np.cos(theta)],
         offsets=[1, 1],
         unit="V",
@@ -87,10 +102,19 @@ if __name__ == "__main__":
     ax.set_aspect('equal', adjustable='box')
     ax.grid()
 
-    plt.show()
+    #plt.show()
 
     print(vg_parallel.snapshot())
+    print(vg_parallel.instrument)
 
     print(vg_parallel.get())
     print(vg_parallel.name)
     print(vg_parallel.label)
+
+
+    multi_param = MultiChannelParameter(
+        channels=[dummy.ch1, dummy.ch2],
+        name="custom_multi_param_2",
+    )
+
+    print(multi_param.instrument)

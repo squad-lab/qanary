@@ -62,6 +62,9 @@ class VirtualGate(Parameter):
         self.factors = factors
         self.offsets = offsets
 
+        if not all(ch.instrument == gates[0].instrument for ch in gates):
+            raise ValueError("All gates must belong to the same instrument")
+
         if name is None:
             gate_names = "_".join(g.name for g in gates)
             name = f"virtual_gate_{gate_names}"
@@ -75,6 +78,7 @@ class VirtualGate(Parameter):
             name=name,
             label=label,
             unit=unit,
+            instrument=gates[0].instrument,
             set_cmd=None,
             get_cmd=None,
             **kwargs,
@@ -133,6 +137,9 @@ class MultiChannelParameter(Parameter):
         unit: str = "V",
         **kwargs,
     ):
+        if not all(ch.instrument == channels[0].instrument for ch in channels):
+            raise ValueError("All channels must belong to the same instrument")
+
         if name is None:
             channel_names = "_".join(ch.name for ch in channels)
             name = f"multi_channel_parameter_{channel_names}"
@@ -146,6 +153,7 @@ class MultiChannelParameter(Parameter):
             name=name,
             label=label,
             unit=unit,
+            instrument=channels[0].instrument,
             vals=vals.Numbers(),
             **kwargs,
         )
