@@ -163,6 +163,10 @@ class SegmentedSweep:
         self.stop = stop
         self.num = num
 
+        # need to be accsessed in measurement (only dummy)
+        self.delay = 0.0
+        self.start_delay = 0.0
+
 
 def _sweep_param(sweep: Sweep = None, override: list = None):
     """Does a single sweep
