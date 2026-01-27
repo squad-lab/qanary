@@ -152,7 +152,7 @@ class SegmentedSweep:
             },
         ]
 
-        self.parameter = parameter
+        self.parameter = np.atleast_1d(parameter)
         self.values = np.array([])
         for segment in self.segments:
             seg_values = np.linspace(

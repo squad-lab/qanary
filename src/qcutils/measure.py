@@ -474,22 +474,23 @@ class Measurement:
         instruments_snapshot = {
             inst.name: inst.snapshot() for inst in self.station.instruments
         }
+
+        parameters_snapshot = {}
+
         for param in self.station.parameters:
-            param_val = param()
-            if isinstance(param_val, np.ndarray):
-                param_val = param_val.tolist()
+            val = param()
 
-            param_val_str = str(param_val)
-            if len(param_val_str) > 50:
-                param_val_str = param_val_str[:50] + "..."
+            if isinstance(val, np.ndarray):
+                val = val.tolist()
 
-            parameters_snapshot = {
-                param.name: {
-                    "value": param_val_str,
-                    "unit": param.unit,
-                    "label": param.label,
-                }
-                for param in self.station.parameters
+            val_str = str(val)
+            if len(val_str) > 50:
+                val_str = val_str[:50] + "..."
+
+            parameters_snapshot[param.name] = {
+                "value": val_str,
+                "unit": param.unit,
+                "label": param.label,
             }
 
         # Get sweep metadata for pretty printed table
