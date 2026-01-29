@@ -5,6 +5,19 @@ from typing import Sequence
 import numpy as np
 
 
+### helper ###
+
+
+def _root_instrument(param: Parameter):
+    instr = param.instrument
+    while hasattr(instr, "parent") and instr.parent is not None:
+        instr = instr.parent
+    return instr
+
+
+##############
+
+
 class ParameterMixin:
     def __init__(
         self,
@@ -62,8 +75,9 @@ class VirtualGate(Parameter):
         self.factors = factors
         self.offsets = offsets
 
-        if not all(ch.instrument == gates[0].instrument for ch in gates):
-            raise ValueError("All gates must belong to the same instrument")
+        root = _root_instrument(gates[0])
+        if not all(_root_instrument(ch) is root for ch in gates):
+            raise ValueError("All gates must belong to the same root instrument")
 
         if name is None:
             gate_names = "_".join(g.name for g in gates)
@@ -137,8 +151,9 @@ class MultiChannelParameter(Parameter):
         unit: str = "V",
         **kwargs,
     ):
-        if not all(ch.instrument == channels[0].instrument for ch in channels):
-            raise ValueError("All channels must belong to the same instrument")
+        root = _root_instrument(channels[0])
+        if not all(_root_instrument(ch) is root for ch in channels):
+            raise ValueError("All channels must belong to the same root instrument")
 
         if name is None:
             channel_names = "_".join(ch.name for ch in channels)
@@ -166,7 +181,11 @@ class MultiChannelParameter(Parameter):
 
     def get_raw(self):
         values = tuple(ch.get() for ch in self.channels)
-        return values
+
+        if all(v == values[0] for v in values):
+            return float(values[0])
+        else:
+            raise ValueError(f"MultiChannelParameter values differ: {values}")
 
     def snapshot_base(self, update=False, params_to_skip_update=None):
         snap = super().snapshot_base(
