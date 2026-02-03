@@ -185,7 +185,7 @@ class MultiChannelParameter(Parameter):
         if all(v == values[0] for v in values):
             return float(values[0])
         else:
-            raise ValueError(f"MultiChannelParameter values differ: {values}")
+            return None
 
     def snapshot_base(self, update=False, params_to_skip_update=None):
         snap = super().snapshot_base(
