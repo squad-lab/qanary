@@ -66,6 +66,7 @@ class CircularSweep:
         num: int | float = 0.0,
         step: int | float = 0.0,
         delay: float = 0.0,
+        start_delay: float = 0.0,
         ramprate: float = 0.0,
         repetitions: int = 1,
     ) -> None:
@@ -93,18 +94,18 @@ class CircularSweep:
         if ramprate:
             delay = abs(start - stop) / (ramprate * num)
 
-        self.parameter = parameter
-        self.values = np.append(
-            np.tile(
-                np.linspace(start, stop, num),
-                np.linspace(start, stop, num)[::-1],
-                reps=repetitions,
-            )
+        self.parameter = np.atleast_1d(parameter)
+        self.values = np.tile(
+            np.concatenate(
+                [np.linspace(start, stop, num), np.linspace(start, stop, num)[::-1]]
+            ),
+            reps=repetitions,
         )
         self.start = start
         self.stop = stop
         self.num = num
         self.delay = delay
+        self.start_delay = start_delay
 
 
 class SegmentedSweep:
