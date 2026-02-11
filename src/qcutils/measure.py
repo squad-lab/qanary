@@ -194,6 +194,12 @@ class Station:
             self.parameters.append(pm)
         return pm
 
+    def remove_parameter(self, pm: ParameterMixin):
+        if pm in self.parameters:
+            self.parameters.remove(pm)
+        else:
+            raise ValueError(f"Parameter {pm.name} not found in station {self.name}")
+
 
 class Measurement:
     def __init__(
