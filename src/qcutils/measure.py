@@ -15,7 +15,6 @@ import zarr
 from checksumdir import dirhash
 from git import Repo
 from qcodes.parameters import Parameter
-from tabulate import tabulate
 from tqdm import tqdm
 
 # Local imports
@@ -443,6 +442,41 @@ class Measurement:
             else:
                 logger.info("No changes to commit; skipping push.")
 
+    def _print_table(self, snapshot_table, headers):
+        """
+        Print out a parameter snapshot table in a tabular shape.
+
+        Parameters
+        ----------
+        snapshot_table : list[list[str]]
+            Table rows, e.g. [[up1, Up Plunger 1, -1.0, V], ...]
+        headers : list[str]
+            Column headers, e.g. ["Name", "Label", "Value", "Unit"]
+        """
+
+        # Convert everything to string
+        table = [[str(cell) for cell in row] for row in snapshot_table]
+
+        # Compute column widths
+        ncols = len(headers)
+        col_widths = []
+        for col in range(ncols):
+            max_cell = max(len(row[col]) for row in table)
+            col_widths.append(max(max_cell, len(headers[col])))
+
+        # Helpers
+        def fmt_row(row):
+            return "  ".join(row[i].ljust(col_widths[i]) for i in range(ncols))
+
+        def sep():
+            return "  ".join("-" * w for w in col_widths)
+
+        # Print table
+        print(fmt_row(headers))
+        print(sep())
+        for row in table:
+            print(fmt_row(row))
+
     def run(
         self,
         sweeps: Union[Sweep, CircularSweep, Sequence[Union[Sweep, dict]]],
@@ -596,23 +630,19 @@ class Measurement:
                 total_points *= len(sweep.values)
 
             logger.info("Registered Parameters:")
-            print(
-                "\n",
-                tabulate(
-                    parameters_snapshot_table,
-                    headers=parameters_snapshot_headers,
-                ),
-                "\n",
+            print("\n")
+            self._print_table(
+                snapshot_table=parameters_snapshot_table,
+                headers=parameters_snapshot_headers,
             )
+            print("\n")
             logger.info("Sweeps Summary:")
-            print(
-                "\n",
-                tabulate(
-                    sweep_metadata,
-                    headers=sweep_metadata_headers,
-                ),
-                "\n",
+            print("\n")
+            self._print_table(
+                snapshot_table=sweep_metadata,
+                headers=sweep_metadata_headers,
             )
+            print("\n")
 
             logger.info(f"Starting the measurement with ID: {self.id}")
             global bar
