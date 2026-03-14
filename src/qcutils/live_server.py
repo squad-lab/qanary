@@ -197,7 +197,10 @@ def _run_server(host: str, port: int):
 
     async def start_server():
         global _WS_SERVER, _WS_PORT
-        _WS_SERVER = await websockets.serve(_handle_client, host, port)
+        # Use a 100 MB limit to handle large datasets (default is 1 MB).
+        _WS_SERVER = await websockets.serve(
+            _handle_client, host, port, max_size=100 * 1024 * 1024
+        )
         _WS_PORT = port
         logger.debug(f"WebSocket server started on ws://{host}:{port}")
         await _WS_SERVER.wait_closed()
