@@ -9,9 +9,10 @@ FastAPI backend) to read data from in-memory Zarr stores in real-time.
 import asyncio
 import json
 import threading
-from typing import Optional, Set
+import numpy as np
 import zarr
 import xarray as xr
+from typing import Optional, Set
 
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -30,6 +31,24 @@ _MEMORY_STORES_REF = None
 _WS_PORT: int = 0  # Store the actual port number
 
 
+def _sanitize_for_json(value):
+    """
+    Recursively convert numpy values to JSON-serializable Python types.
+
+    """
+    if isinstance(value, np.ndarray):
+        return [_sanitize_for_json(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_for_json(item) for item in value]
+    return value
+
+
 def set_memory_stores_reference(stores_dict):
     """Set reference to the LIVE_MEMORY_STORES dictionary."""
     global _MEMORY_STORES_REF
@@ -46,7 +65,7 @@ async def _handle_client(websocket: WebSocketServerProtocol):
             try:
                 request = json.loads(message)
                 response = await _process_request(request)
-                await websocket.send(json.dumps(response))
+                await websocket.send(json.dumps(_sanitize_for_json(response)))
             except json.JSONDecodeError:
                 await websocket.send(
                     json.dumps({"error": "Invalid JSON", "success": False})
