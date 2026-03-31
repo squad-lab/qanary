@@ -24,6 +24,7 @@ class Sweep:
         delay: float = 0.0,
         start_delay: float = 0.0,
         ramprate: float = 0.0,
+        spacing: str = "lin",
     ) -> None:
         """Sweep class to define a parameter sweep
 
@@ -35,6 +36,7 @@ class Sweep:
             num: number of points
             delay: delay / dwell time between points
             ramprate: ramp rate
+            spacing: spacing of the sweep points ("lin" or "log")
         """
         if not (step or num):
             logger.error("Either one of step or num has to be set")
@@ -49,7 +51,15 @@ class Sweep:
             self.parameter = [parameter]
         else:
             self.parameter = parameter
-        self.values = np.linspace(start, stop, num)
+
+        if spacing == "log":
+            self.values = np.logspace(np.log10(start), np.log10(stop), num)
+        elif spacing == "lin":
+            self.values = np.linspace(start, stop, num)
+        else:
+            logger.error("Invalid spacing type. Use 'lin' or 'log'.")
+            raise ValueError("Invalid spacing type. Use 'lin' or 'log'.")
+
         self.start = start
         self.stop = stop
         self.num = num
