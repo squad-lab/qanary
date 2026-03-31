@@ -1,3 +1,4 @@
+import os
 from threading import Thread
 from time import sleep, time
 from typing import Any, Callable, Optional, Sequence
@@ -279,6 +280,7 @@ def stepper(
     parallel_sweep: bool = False,
     memory_store: Optional[Any] = None,
     disk_store: Optional[Any] = None,
+    nc_snapshot_path: Optional[str] = None,
     verbose: bool = False,
     buffered_sweep: Optional[Any] = None,
 ):
@@ -298,6 +300,7 @@ def stepper(
         parallel_sweep: Boolean to enable parallel parameter sweeps
         memory_store: Optional zarr store that keeps the live dataset in memory
         disk_store: Optional zarr store used for persisting to disk
+        nc_snapshot_path: Optional netcdf path for best-effort in-run snapshots
         verbose: Enables verbose logging of persistence actions when True
         buffered_sweep: Optional buffered sweep tree describing fast, instrument-internal sweeps
     """
@@ -320,7 +323,6 @@ def stepper(
             logger.info("[stepper._persist_memory] Saved dataset to in-memory store")
 
     def _persist_disk():
-        # TODO: if branch marked for removal after .nc switch
         if disk_store is not None:
             if memory_store is not None:
                 zarr.copy_store(memory_store, disk_store, if_exists="replace")
@@ -335,9 +337,26 @@ def stepper(
                         "[stepper._persist_disk] Saved dataset directly to disk store"
                     )
         else:
-            dataset.to_netcdf(data_location, mode="w")
+            dataset.to_zarr(store=data_location, mode="w")
             if verbose:
                 logger.info(f"[stepper._persist_disk] Saved dataset to {data_location}")
+
+        if nc_snapshot_path:
+            try:
+                tmp_nc = f"{nc_snapshot_path}.tmp"
+                dataset.to_netcdf(tmp_nc, mode="w")
+                os.replace(tmp_nc, nc_snapshot_path)
+                if verbose:
+                    logger.info(
+                        "[stepper._persist_disk] Wrote netCDF snapshot to %s",
+                        nc_snapshot_path,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "[stepper._persist_disk] Failed netCDF snapshot to %s: %s",
+                    nc_snapshot_path,
+                    exc,
+                )
 
     try:
         if len(sweeps) == 0:
@@ -415,6 +434,7 @@ def stepper(
                     parallel_sweep=parallel_sweep,
                     memory_store=memory_store,
                     disk_store=disk_store,
+                    nc_snapshot_path=nc_snapshot_path,
                     verbose=verbose,
                     buffered_sweep=buffered_sweep,
                 )

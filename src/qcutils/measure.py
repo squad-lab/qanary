@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -213,6 +214,7 @@ class Measurement:
         metadata: dict,
         fridge_name: str = "",
         save_interval: float = 0.1,
+        nc_snapshot_during_run: bool = False,  # @Spandan - edit as needed
         git_repo: str = "~/.measurement-hashes",
     ):
         """Measurement class for sweeping and storing data
@@ -224,6 +226,7 @@ class Measurement:
             experiment_name (str): Name of the experiment
             data_location (str): Location of the data to be stored
             save_interval (float, optional): Period for writing to the disk. Defaults to 0.1.
+            nc_snapshot_during_run (bool, optional): Persist best-effort .nc snapshots during run. Defaults to True.
             git_repo (str, optional): Location of the git repository to store the measurement hashes. Defaults to "~/.measurement-hashes".
         """
         self.wafer_id = wafer_id
@@ -239,6 +242,7 @@ class Measurement:
         os.makedirs(self.datalogging, exist_ok=True)
 
         self.save_interval = save_interval
+        self.nc_snapshot_during_run = nc_snapshot_during_run
         if not fridge_name:
             self.git_repo = os.path.expanduser(git_repo)
         else:
@@ -256,6 +260,7 @@ class Measurement:
             self.id = f"{sorted(data_files)[-1] + 1}-{uuid.uuid4()}"
 
         self.data = f"{self.datalogging}/{self.id}.nc"
+        self.live_data = f"{self.datalogging}/{self.id}.zarr"
         self.arr = None
         self.memory_store = None
         self.disk_store = None
@@ -468,6 +473,77 @@ class Measurement:
 
         return digest.hexdigest()
 
+    def _finalize_disk_artifacts(
+        self, dataset: Optional[xr.Dataset] = None, verbose: bool = False
+    ) -> Optional[xr.Dataset]:
+        """
+        Best-effort finalize to a single netCDF file and update live DB path.
+        This is called on normal completion and interruption/error paths.
+
+        Args:
+            dataset (Optional[xr.Dataset]): The dataset to persist. If None, will attempt to load from live Zarr or in-memory store.
+            verbose (bool): Whether to log detailed information during finalization.
+
+        Returns:
+            Optional[xr.Dataset]: The dataset that was finalized, or None if finalization failed.
+
+        Raises:
+            Exception: If there is an error during finalization, it will be logged but not raised.
+
+        """
+        export_dataset = dataset
+
+        if export_dataset is None:
+            try:
+                if Path(self.live_data).exists():
+                    export_dataset = xr.load_dataset(self.live_data, engine="zarr")
+            except Exception as e:
+                logger.warning(
+                    f"Failed loading latest dataset state from {self.live_data}: {e}"
+                )
+
+        if export_dataset is None and self.arr is not None:
+            export_dataset = self.arr
+
+        if export_dataset is None:
+            logger.warning(
+                "No dataset available to export to netCDF during finalization"
+            )
+            return None
+
+        nc_exported = False
+        try:
+            tmp_nc = f"{self.data}.tmp"
+            export_dataset.to_netcdf(tmp_nc, mode="w")
+            os.replace(tmp_nc, self.data)
+            nc_exported = True
+            if verbose:
+                logger.info(f"[measurement] Exported final dataset to {self.data}")
+        except Exception as e:
+            logger.error(f"Failed exporting final dataset to netCDF: {e}")
+
+        if nc_exported:
+            nc_path = str(Path(self.data).resolve())
+            if live_db:
+                try:
+                    live_db.update_measurement_path(self.id, nc_path)
+                except Exception as e:
+                    logger.warning(f"Failed updating final measurement path in DB: {e}")
+
+            entry = LIVE_MEMORY_STORES.get(self.id)
+            if isinstance(entry, LiveDatasetInfo):
+                entry.disk_path = nc_path
+
+            try:
+                if Path(self.live_data).exists():
+                    shutil.rmtree(self.live_data)
+            except Exception as e:
+                logger.warning(
+                    f"Failed removing temporary zarr store at {self.live_data}: {e}"
+                )
+
+        return export_dataset
+
     def _print_table(self, snapshot_table, headers):
         """
         Print out a parameter snapshot table in a tabular shape.
@@ -637,19 +713,23 @@ class Measurement:
 
         self.arr.attrs.update(meta)
         self.memory_store = zarr.MemoryStore()
-        self.disk_store = None
+        self.disk_store = zarr.DirectoryStore(self.live_data)
         self.arr.to_zarr(store=self.memory_store, mode="w")
         if verbose:
             logger.info("[measurement] Seeded dataset to in-memory store")
-        self.arr.to_netcdf(self.data, mode="w")
+        zarr.copy_store(self.memory_store, self.disk_store, if_exists="replace")
         if verbose:
-            logger.info("[measurement] Seeded dataset to disk .nc file")
+            logger.info("[measurement] Seeded dataset to disk .zarr store")
         register_memory_store(
-            self.id, self.memory_store, disk_path=str(Path(self.data).resolve())
+            self.id, self.memory_store, disk_path=str(Path(self.live_data).resolve())
         )
         logger.debug(f"Live Memory Location: memory://{self.id}")
 
         # Do the measurement
+        dataset: Optional[xr.Dataset] = None
+        finalized = False
+        interrupted = False
+        return_code = None
         try:
             total_points = 1
             for sweep in sweeps:
@@ -682,7 +762,7 @@ class Measurement:
 
             dataset = stepper(
                 dataset=self.arr,
-                data_location=self.data,
+                data_location=self.live_data,
                 depth=len(sweeps),
                 sweeps=sweeps,
                 independents=independents,
@@ -692,12 +772,17 @@ class Measurement:
                 save_interval=self.save_interval,
                 interrupt=interrupt,
                 memory_store=self.memory_store,
-                disk_store=self.disk_store,  # Keeping in case of regression after zarr -> netcdf switch
+                disk_store=self.disk_store,
+                nc_snapshot_path=self.data if self.nc_snapshot_during_run else None,
                 verbose=verbose,
                 buffered_sweep=buffered_sweep,
             )
-            bar.close()
 
+            dataset = self._finalize_disk_artifacts(dataset=dataset, verbose=verbose)
+            finalized = True
+            if dataset is None:
+                logger.warning("Measurement finished but final netCDF export failed")
+                return
             data_hash = self._compute_data_hash()
             try:
                 self._push_gitlab(dataset, data_hash)
@@ -710,6 +795,7 @@ class Measurement:
             return
 
         except KeyboardInterrupt:
+            interrupted = True
             logger.warning("Measurement interrupted, ramping down instruments")
             if rampdown_on_interrupt:
                 rampdown_sweeps = [
@@ -724,9 +810,21 @@ class Measurement:
                             )
                         )
                 sweeper(rampdown_sweeps)
-                return 1
+                return_code = 1
+        except Exception as e:
+            logger.exception(f"Measurement failed with error: {e}", exc_info=True)
         finally:
+            if bar is not None:
+                try:
+                    bar.close()
+                except Exception:
+                    pass
+            if not finalized:
+                self._finalize_disk_artifacts(dataset=dataset, verbose=verbose)
             unregister_memory_store(self.id)
+
+        if interrupted:
+            return return_code
 
 
 def run(

@@ -143,6 +143,27 @@ def end_measurement(measurement_id: str, ended_at: str) -> None:
     logger.debug(f"Marked measurement {measurement_id} as ended")
 
 
+def update_measurement_path(measurement_id: str, fpath: str) -> None:
+    """
+    Update the persisted disk path for a measurement.
+
+    Args:
+        measurement_id: Measurement ID to update
+        fpath: New disk path
+
+    """
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE live_measurements
+            SET fpath = ?
+            WHERE measurement_id = ?
+        """,
+            (fpath, measurement_id),
+        )
+    logger.debug(f"Updated measurement {measurement_id} path to {fpath}")
+
+
 def get_live_measurements() -> List[LiveMeasurement]:
     """
     Get all currently live measurements.
