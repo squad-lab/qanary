@@ -320,6 +320,7 @@ def stepper(
             logger.info("[stepper._persist_memory] Saved dataset to in-memory store")
 
     def _persist_disk():
+        # TODO: if branch marked for removal after .nc switch
         if disk_store is not None:
             if memory_store is not None:
                 zarr.copy_store(memory_store, disk_store, if_exists="replace")
@@ -334,7 +335,7 @@ def stepper(
                         "[stepper._persist_disk] Saved dataset directly to disk store"
                     )
         else:
-            dataset.to_zarr(data_location, mode="a")
+            dataset.to_netcdf(data_location, mode="w")
             if verbose:
                 logger.info(f"[stepper._persist_disk] Saved dataset to {data_location}")
 

@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import json
 import os
 import socket
@@ -244,14 +245,17 @@ class Measurement:
             self.git_repo = os.path.expanduser(f"{git_repo}-{fridge_name}")
 
         data_files = os.listdir(self.datalogging)
+        # Keeping .zarr for backward compatibility, but we will migrate to .nc in the future
         data_files = [
-            int(file.split("-")[0]) for file in data_files if file.endswith(".zarr")
+            int(file.split("-")[0])
+            for file in data_files
+            if file.endswith(".zarr") or file.endswith(".nc")
         ]
 
         if len(data_files) != 0:
             self.id = f"{sorted(data_files)[-1] + 1}-{uuid.uuid4()}"
 
-        self.data = f"{self.datalogging}/{self.id}.zarr"
+        self.data = f"{self.datalogging}/{self.id}.nc"
         self.arr = None
         self.memory_store = None
         self.disk_store = None
@@ -448,6 +452,22 @@ class Measurement:
             else:
                 logger.info("No changes to commit; skipping push.")
 
+    def _compute_data_hash(self) -> str:
+        """
+        Util function to compute SHA256 hash for the persisted measurement output.
+
+        """
+        data_path = Path(self.data)
+        if data_path.is_dir():
+            return dirhash(str(data_path), "sha256", excluded_extensions=["pyc"])
+
+        digest = hashlib.sha256()
+        with open(data_path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+
+        return digest.hexdigest()
+
     def _print_table(self, snapshot_table, headers):
         """
         Print out a parameter snapshot table in a tabular shape.
@@ -617,13 +637,13 @@ class Measurement:
 
         self.arr.attrs.update(meta)
         self.memory_store = zarr.MemoryStore()
-        self.disk_store = zarr.DirectoryStore(self.data)
+        self.disk_store = None
         self.arr.to_zarr(store=self.memory_store, mode="w")
         if verbose:
             logger.info("[measurement] Seeded dataset to in-memory store")
-        zarr.copy_store(self.memory_store, self.disk_store, if_exists="replace")
+        self.arr.to_netcdf(self.data, mode="w")
         if verbose:
-            logger.info("[measurement] Seeded dataset to disk store")
+            logger.info("[measurement] Seeded dataset to disk .nc file")
         register_memory_store(
             self.id, self.memory_store, disk_path=str(Path(self.data).resolve())
         )
@@ -672,13 +692,13 @@ class Measurement:
                 save_interval=self.save_interval,
                 interrupt=interrupt,
                 memory_store=self.memory_store,
-                disk_store=self.disk_store,
+                disk_store=self.disk_store,  # Keeping in case of regression after zarr -> netcdf switch
                 verbose=verbose,
                 buffered_sweep=buffered_sweep,
             )
             bar.close()
 
-            data_hash = dirhash(self.data, "sha256", excluded_extensions=["pyc"])
+            data_hash = self._compute_data_hash()
             try:
                 self._push_gitlab(dataset, data_hash)
                 logger.info(f"Measurement completed and pushed with hash: {data_hash}")

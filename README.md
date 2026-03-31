@@ -76,6 +76,15 @@ This will automatically fetch and install the required packages.
 
 For an example of using `qcutils` for a measurement, refer to [example.py](example.py). API documentation is currently available in the code itself.
 
+### Live & Disk Format
+
+`qcutils` uses a split data path:
+
+- Live plotting/streaming data: In-memory Zarr (via `zarr.MemoryStore`)
+- Persisted measurement output on disk: NetCDF4 (`.nc`)
+
+For live sessions, the measurement is available via `memory://<measurement_id>` in Qimchi, while it is running, and the corresponding saved file path points to the `.nc` file in the measurement directory.
+
 ## Development
 
 We welcome contributions to `qcutils`! To get started with development, clone the repository:
