@@ -4,6 +4,10 @@ SQLite database for tracking live measurements across processes.
 This module provides a centralized database for tracking active measurements,
 allowing the FastAPI backend to discover live measurements and their WebSocket
 endpoints without requiring shared memory.
+
+# NOTE: Keep in sync with `qimchi-api.shared.live_db`
+# TODO: Make this a separate package to avoid code duplication.
+
 """
 
 import sqlite3

@@ -1650,10 +1650,10 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.15.2" },
     { name = "setuptools", specifier = ">=78.1.0" },
     { name = "tool", specifier = ">=0.8.0" },
-    { name = "websockets", specifier = ">=14.0" },
+    { name = "websockets", specifier = ">=16.0" },
     { name = "zarr", specifier = "==2.18.4" },
     { name = "zeroconf", specifier = ">=0.147.2" },
-    { name = "zhinst", specifier = "==25.10.0" },
+    { name = "zhinst", specifier = ">=25.10.0" },
     { name = "zhinst-qcodes", specifier = ">=0.6.0" },
 ]
 

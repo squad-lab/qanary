@@ -20,7 +20,8 @@ from qcodes.parameters import Parameter
 from tqdm import tqdm
 
 # Local imports
-from qcutils import live_db, live_server
+from qcutils import live_server
+from qcutils.shared import live_db
 from qcutils.buffered.sweep import fetch_dependents_tree
 from qcutils.logger import get_logger
 from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
