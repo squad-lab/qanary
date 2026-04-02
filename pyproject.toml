@@ -1,6 +1,6 @@
 [project]
 name = "qcutils"
-version = "0.7.1"
+version = "0.8.0"
 authors = [
   { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
 ]
