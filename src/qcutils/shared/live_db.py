@@ -4,6 +4,10 @@ SQLite database for tracking live measurements across processes.
 This module provides a centralized database for tracking active measurements,
 allowing the FastAPI backend to discover live measurements and their WebSocket
 endpoints without requiring shared memory.
+
+# NOTE: Keep in sync with `qimchi-api.shared.live_db`
+# TODO: Make this a separate package to avoid code duplication.
+
 """
 
 import sqlite3
@@ -25,7 +29,10 @@ _DB_LOCK = threading.Lock()
 
 @dataclass
 class LiveMeasurement:
-    """Information about a live measurement."""
+    """
+    Information about a live measurement.
+
+    """
 
     measurement_id: str
     fpath: str  # Disk path where data will be saved
@@ -37,7 +44,10 @@ class LiveMeasurement:
 
 
 def _get_db_path() -> Path:
-    """Get the path to the live measurements database."""
+    """
+    Get the path to the live measurements database.
+
+    """
     global _DB_PATH
 
     if _DB_PATH is not None:
@@ -53,7 +63,10 @@ def _get_db_path() -> Path:
 
 @contextmanager
 def _get_connection():
-    """Get a database connection with proper locking."""
+    """
+    Get a database connection with proper locking.
+
+    """
     with _DB_LOCK:
         db_path = _get_db_path()
         conn = sqlite3.connect(str(db_path), timeout=10.0)
@@ -69,7 +82,10 @@ def _get_connection():
 
 
 def init_database():
-    """Initialize the database schema."""
+    """
+    Initialize the database schema.
+
+    """
     with _get_connection() as conn:
         conn.execute(
             """
@@ -110,6 +126,7 @@ def register_measurement(
         ws_url: WebSocket URL for accessing live data
         ws_port: WebSocket port number
         started_at: ISO format timestamp when measurement started
+
     """
     with _get_connection() as conn:
         conn.execute(
@@ -130,6 +147,7 @@ def end_measurement(measurement_id: str, ended_at: str) -> None:
     Args:
         measurement_id: Measurement ID to mark as ended
         ended_at: ISO format timestamp when measurement ended
+
     """
     with _get_connection() as conn:
         conn.execute(
@@ -143,12 +161,34 @@ def end_measurement(measurement_id: str, ended_at: str) -> None:
     logger.debug(f"Marked measurement {measurement_id} as ended")
 
 
+def update_measurement_path(measurement_id: str, fpath: str) -> None:
+    """
+    Update the persisted disk path for a measurement.
+
+    Args:
+        measurement_id: Measurement ID to update
+        fpath: New disk path
+
+    """
+    with _get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE live_measurements
+            SET fpath = ?
+            WHERE measurement_id = ?
+        """,
+            (fpath, measurement_id),
+        )
+    logger.debug(f"Updated measurement {measurement_id} path to {fpath}")
+
+
 def get_live_measurements() -> List[LiveMeasurement]:
     """
     Get all currently live measurements.
 
     Returns:
         List of LiveMeasurement objects for active measurements
+
     """
     with _get_connection() as conn:
         cursor = conn.execute(
@@ -184,6 +224,7 @@ def get_all_measurements() -> List[LiveMeasurement]:
 
     Returns:
         List of LiveMeasurement objects
+
     """
     with _get_connection() as conn:
         cursor = conn.execute(
@@ -220,6 +261,7 @@ def get_measurement(measurement_id: str) -> Optional[LiveMeasurement]:
 
     Returns:
         LiveMeasurement object if found, None otherwise
+
     """
     with _get_connection() as conn:
         cursor = conn.execute(
@@ -255,6 +297,7 @@ def cleanup_old_measurements(days: int = 7) -> int:
 
     Returns:
         Number of records deleted
+
     """
     with _get_connection() as conn:
         cursor = conn.execute(
