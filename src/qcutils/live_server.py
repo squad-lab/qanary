@@ -203,6 +203,46 @@ async def _process_request(request: dict) -> dict:
             )
             return {"success": False, "error": str(e)}
 
+    elif action == "get_snapshot":
+        # Return variable names & data in one atomic open
+        if not measurement_id:
+            return {"success": False, "error": "measurement_id required"}
+
+        if _MEMORY_STORES_REF is None:
+            return {"success": False, "error": "No memory stores available"}
+
+        entry = _MEMORY_STORES_REF.get(measurement_id)
+        if entry is None:
+            return {"success": False, "error": f"Measurement {measurement_id} not found"}
+
+        store = entry.store if hasattr(entry, "store") else entry
+        if store is None:
+            return {"success": False, "error": f"Store not available for {measurement_id}"}
+
+        try:
+            ds = xr.open_zarr(store=store, consolidated=False)
+            coord_names = list(ds.coords.keys())
+            data_var_names = list(ds.data_vars.keys())
+            # Capture per-variable dims, so the client can reconstruct correctly
+            var_dims = {v: list(ds.data_vars[v].dims) for v in data_var_names}
+            data = {}
+            for var in coord_names:
+                data[var] = ds.coords[var].values.tolist()
+            for var in data_var_names:
+                data[var] = ds.data_vars[var].values.tolist()
+            return {
+                "success": True,
+                "measurement_id": measurement_id,
+                "coords": coord_names,
+                "data_vars": data_var_names,
+                "var_dims": var_dims,
+                "data": data,
+                "attrs": dict(ds.attrs),
+            }
+        except Exception as e:
+            logger.error(f"Error reading snapshot for {measurement_id}: {e}")
+            return {"success": False, "error": str(e)}
+
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
 
