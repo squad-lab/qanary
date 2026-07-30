@@ -587,6 +587,7 @@ class Measurement:
         interrupt: Callable = lambda: False,
         rampdown_on_interrupt=False,
         verbose: bool = False,
+        no_hashing: bool = False,
     ):
         """Run the measurement
 
@@ -595,6 +596,7 @@ class Measurement:
             dependents (list): List of dependent QCoDeS parameters
             interrupt (Callable, optional): Function to interrupt the measurement. Defaults to None.
             rampdown_on_interrupt (bool, optional): Ramp down the instruments on interrupt. Defaults to False.
+            no_hashing (bool, optional): Skip git hashing of the measurement. Defaults to False. Only set to True for unimportant software or hardware tests!
         """
         if not isinstance(sweeps, Sequence):
             sweeps = [sweeps]
@@ -784,14 +786,18 @@ class Measurement:
             if dataset is None:
                 logger.warning("Measurement finished but final netCDF export failed")
                 return
-            data_hash = self._compute_data_hash()
-            try:
-                self._push_gitlab(dataset, data_hash)
-                logger.info(f"Measurement completed and pushed with hash: {data_hash}")
-            except Exception as e:
-                logger.error(
-                    f"Did not push measurement hash to gitlab (upstream). Will try again after next measurement: {e}"
-                )
+
+            if not no_hashing:
+                data_hash = self._compute_data_hash()
+                try:
+                    self._push_gitlab(dataset, data_hash)
+                    logger.info(
+                        f"Measurement completed and pushed with hash: {data_hash}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Did not push measurement hash to gitlab (upstream). Will try again after next measurement: {e}"
+                    )
 
             return
 
@@ -842,6 +848,7 @@ def run(
     rampdown_on_interrupt=False,
     location_return=False,
     verbose: bool = False,
+    no_hashing: bool = False,
     *args,
     **kwargs,
 ):
@@ -861,6 +868,13 @@ def run(
         **kwargs,
     )
 
-    meas.run(sweeps, dependents, interrupt, rampdown_on_interrupt, verbose=verbose)
+    meas.run(
+        sweeps,
+        dependents,
+        interrupt,
+        rampdown_on_interrupt,
+        verbose=verbose,
+        no_hashing=no_hashing,
+    )
     if location_return:
         return meas.data

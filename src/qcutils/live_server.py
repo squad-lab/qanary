@@ -213,11 +213,17 @@ async def _process_request(request: dict) -> dict:
 
         entry = _MEMORY_STORES_REF.get(measurement_id)
         if entry is None:
-            return {"success": False, "error": f"Measurement {measurement_id} not found"}
+            return {
+                "success": False,
+                "error": f"Measurement {measurement_id} not found",
+            }
 
         store = entry.store if hasattr(entry, "store") else entry
         if store is None:
-            return {"success": False, "error": f"Store not available for {measurement_id}"}
+            return {
+                "success": False,
+                "error": f"Store not available for {measurement_id}",
+            }
 
         try:
             ds = xr.open_zarr(store=store, consolidated=False)
