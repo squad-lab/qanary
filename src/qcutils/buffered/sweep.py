@@ -182,7 +182,7 @@ def arm_instruments(
             instrument.run_sweep()
 
     if "dependent" in payload:
-        reserved_keys = {"instrument", "dependent"}
+        reserved_keys = {"instrument", "dependent", "sweeps"}
 
         register_kwargs = {
             key: value for key, value in payload.items() if key not in reserved_keys
