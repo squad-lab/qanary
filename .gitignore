@@ -75,7 +75,6 @@ config.yaml
 
 .DS_Store
 test_db/
-test/
 D:
 
 # Variants of example.py

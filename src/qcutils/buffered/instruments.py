@@ -80,9 +80,10 @@ class NodeMFLI(BufferedNodeBase):
     MFLI node for a buffered sweep tree.
 
     - Uses the LabOne DAQ module in **hardware-trigger** mode (type=6).
-    - Exact grid acquisition (grid/mode=2) with:
+    - Exact grid acquisition with:
         rows := number of trigger events (outer dimension)
         cols := number of points recorded per trigger (inner dimension)
+        (choose grid mode)
 
     Typical flow:
         register_dependent(...)  # config + subscribe + execute()
@@ -103,7 +104,6 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module = self.daq.dataAcquisitionModule()
         self.daq_module.set("device", self.serial)
         self.daq_module.set("type", 6)
-        self.daq_module.set("grid/mode", 2)
 
         self._subs: list[str] = []
 
@@ -114,12 +114,15 @@ class NodeMFLI(BufferedNodeBase):
         delay: float,
         input_trigger: int = 1,
         *,
+        trigger_delay: float = 0.0,
+        trigger_level: float = 0.3,
+        grid_mode: str = "exact",
         edge: str = "rising",
         endless: bool = False,
         count: int = 1,
     ) -> None:
         """
-        Configure DAQ for a hardware-triggered, exact-grid acquisition and start it.
+        Configure DAQ for a hardware-triggered, and start it.
 
         Args:
             dependent: LabOne node(s), e.g. "demods/0/sample.r" or list thereof.
@@ -127,6 +130,8 @@ class NodeMFLI(BufferedNodeBase):
                  of trigger events (outer loop) and cols the points per trigger.
             delay: Step time (s) of the innermost sweep; DAQ duration ~ delay * cols.
             input_trigger: Which TrigIn (1 or 2) to use on the MFLI.
+            trigger_delay: Delay (s) between trigger and first sample (default 0).
+            grid_mode: DAQ grid mode; 1=nearest, 2=linear, 4=exact grid (default).
             edge: Trigger edge; one of "rising", "falling", "both".
             endless: If True, run continuous acquisition (advanced use).
             count: Number of grids to acquire in single-shot mode (endless=False).
@@ -138,6 +143,14 @@ class NodeMFLI(BufferedNodeBase):
         else:
             self.dependents = [dependent.zi_node.lower()]
 
+        if grid_mode not in ["nearest", "linear", "exact"]:
+            raise ValueError(
+                f"Invalid grid_mode: {grid_mode}. Must be nearest, linear or exact."
+            )
+
+        # set grid mode
+        self.daq_module.set("grid/mode", grid_mode)
+
         self.daq.setInt(f"/{self.serial}/demods/0/enable", 1)
         self.daq.setDouble(f"/{self.serial}/demods/0/timeconstant", float(delay))
 
@@ -148,6 +161,13 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module.set(
             "triggernode", f"/{self.serial}/demods/0/sample.TrigIn{int(input_trigger)}"
         )
+
+        # trigger level
+        self.daq.setDouble(
+            f"/{self.serial}/triggers/in/{int(input_trigger) - 1}/level",
+            trigger_level,
+        )
+
         edge_map = {"rising": 1, "falling": 2, "both": 3}
         self.daq_module.set("edge", edge_map.get(edge, 1))
 
@@ -163,10 +183,173 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module.set("grid/rows", rows)
         self.daq_module.set("grid/cols", cols)
 
-        self.daq_module.set("duration", float(delay) * cols)
+        if grid_mode != "exact":
+            self.daq_module.set("duration", float(delay) * cols)
+
+        # trigger delay
+        self.daq_module.set("delay", trigger_delay)
 
         self.daq_module.set("holdoff/time", max(0.0, float(delay) * (cols - 0.5)))
-        self.daq_module.set("delay", 0.0)
+
+        self._subs = []
+        for dep in self.dependents:
+            path = f"/{self.serial}{dep}"
+            self.daq_module.subscribe(path)
+            self._subs.append(path)
+
+        self.daq_module.execute()
+
+    def fetch(self, *, timeout: float = 15.0) -> list[np.ndarray]:
+        """
+        Wait for DAQ completion and return a list of numpy arrays,
+        one for each subscribed path in self._subs.
+        """
+        t0 = time()
+        while not self.daq_module.finished():
+            sleep(0.05)
+            if time() - t0 > timeout:
+                break
+
+        result = self.daq_module.read()
+        self.daq_module.finish()
+
+        arrays: list[np.ndarray] = []
+        for dep in self.dependents:
+            dep_split = dep.split("/")
+            data = result[self.serial][dep_split[1]][dep_split[2]][dep_split[3]][0][
+                "value"
+            ]
+            arrays.append(np.array(data).flatten())
+
+        return arrays
+
+
+class NodeUHFLI(BufferedNodeBase):
+    """
+    UHFLI node for a buffered sweep tree - very similar to MFLI node
+
+    - Uses the LabOne DAQ module in **hardware-trigger** mode (type=6).
+    - Exact grid acquisition with:
+        rows := number of trigger events (outer dimension)
+        cols := number of points recorded per trigger (inner dimension)
+        (choose grid mode)
+
+    Typical flow:
+        register_dependent(...)  # config + subscribe + execute()
+        ... run your QDAC sweep to generate triggers ...
+        fetch()                  # wait for completion and read data
+
+    NOTE:
+    Minimum trigger width is 1e-4s. Set the trigger width in the parent instrument accordingly.
+    """
+
+    def __init__(self, inst: Instrument, *args, **kwargs) -> None:
+        super().__init__(inst=inst, *args, **kwargs)
+
+        self.core = self.core.core
+        self.serial = self.core.serial
+        self.daq = self.core.session.daq_server
+
+        self.daq_module = self.daq.dataAcquisitionModule()
+        self.daq_module.set("device", self.serial)
+        self.daq_module.set("type", 6)
+
+        self._subs: list[str] = []
+
+    def register_dependent(
+        self,
+        dependent: Union[Parameter, Sequence[Parameter]],
+        num: int | Sequence[int],
+        delay: float,
+        input_trigger: int = 1,
+        *,
+        demod_channels: Union[int, Sequence[int]] = 0,
+        trigger_delay: float = 0.0,
+        trigger_level: float = 0.3,
+        grid_mode: str = "exact",
+        edge: str = "rising",
+        endless: bool = False,
+        count: int = 1,
+    ) -> None:
+        """
+        Configure DAQ for a hardware-triggered, exact-grid acquisition and start it.
+
+        Args:
+            dependent: LabOne node(s), e.g. "demods/0/sample.r" or list thereof.
+            demod_channels: Demodulator channels to use for the dependent(s).
+            num: Number of points. For 2D, pass (rows, cols) where rows is the number
+                 of trigger events (outer loop) and cols the points per trigger.
+            delay: Step time (s) of the innermost sweep; DAQ duration ~ delay * cols.
+            input_trigger: Which TrigIn (1 or 2) to use on the MFLI.
+            trigger_delay: Delay (s) between trigger and first sample (default 0).
+            grid_mode: DAQ grid mode; 1=nearest, 2=linear, 4=exact grid (default).
+            edge: Trigger edge; one of "rising", "falling", "both".
+            endless: If True, run continuous acquisition (advanced use).
+            count: Number of grids to acquire in single-shot mode (endless=False).
+        """
+        # Normalize dependents list
+
+        if isinstance(dependent, Sequence):
+            self.dependents = [dep.zi_node.lower() for dep in dependent]
+        else:
+            self.dependents = [dependent.zi_node.lower()]
+
+        if grid_mode not in ["nearest", "linear", "exact"]:
+            raise ValueError(
+                f"Invalid grid_mode: {grid_mode}. Must be nearest, linear or exact."
+            )
+
+        # set grid mode
+        self.daq_module.set("grid/mode", grid_mode)
+
+        for demod in np.atleast_1d(demod_channels):
+            self.daq.setInt(f"/{self.serial}/demods/{demod}/enable", 1)
+            self.daq.setDouble(
+                f"/{self.serial}/demods/{demod}/timeconstant", float(delay)
+            )
+
+        self.daq_module.finish()
+        self.daq_module.unsubscribe("*")
+        self.daq_module.set("clearhistory", 1)
+
+        for demod in np.atleast_1d(demod_channels):
+            self.daq_module.set(
+                "triggernode",
+                f"/{self.serial}/demods/{demod}/sample.TrigIn{int(input_trigger)}",
+            )
+
+        # trigger level
+        self.daq.setDouble(
+            f"/{self.serial}/triggers/in/{int(input_trigger) - 1}/level",
+            trigger_level,
+        )
+
+        # ensure input trigger impedances at 1 kOhm
+        for i in [0, 1, 2, 3]:
+            self.daq.set(f"/{self.serial}/triggers/in/{i}/imp50", 0)
+
+        edge_map = {"rising": 1, "falling": 2, "both": 3}
+        self.daq_module.set("edge", edge_map.get(edge, 1))
+
+        self.daq_module.set("endless", 1 if endless else 0)
+        if not endless:
+            self.daq_module.set("count", int(count))
+
+        if isinstance(num, Sequence) and not isinstance(num, (str, bytes)):
+            rows, cols = int(num[0]), int(num[1])
+        else:
+            rows, cols = 1, int(num)
+
+        self.daq_module.set("grid/rows", rows)
+        self.daq_module.set("grid/cols", cols)
+
+        if grid_mode != "exact":
+            self.daq_module.set("duration", float(delay) * cols)
+
+        # trigger delay
+        self.daq_module.set("delay", trigger_delay)
+
+        self.daq_module.set("holdoff/time", max(0.0, float(delay) * (cols - 0.5)))
 
         self._subs = []
         for dep in self.dependents:
@@ -580,6 +763,188 @@ class NodeKeysightVNA(BufferedNodeBase):
     def run_sweep(self):
         """Run the VNA sweep."""
         self.core.traces[0].run_sweep()
+
+    def fetch(self):
+        """
+        Fetch dependent data.
+
+        Returns:
+            list[np.ndarray]: One array per dependent.
+        """
+        return [dep() for dep in self.dependents]
+
+
+class NodeBaselDAC(BufferedNodeBase):
+    def __init__(
+        self,
+        inst: Instrument,
+        *args,
+        **kwargs,
+    ) -> None:
+        """
+        BaselDAC as a node in the buffered sweep tree, it can oly be on top of the tree
+
+        trigger setup: for 1D sweep just diable, for 2D sweep use awg a and c - put BNC sync out A into Trig in C and vice versa - set trigger type of inner awg to disable and trigger type of outer awg to single step
+
+        Args:
+            sweep (Sweep or Sequence[Sweep]): The sweep object to be used in the buffered sweep tree. Can be a 1D or 2D sweep.
+            dependent (Union[Parameter, Sequence[Parameter]]): Dependent parameter to be measured. E.g. MFLI or UHFLI
+        """
+        super().__init__(inst=inst, *args, **kwargs)
+        self.contacts = {}
+
+    def register_sweep(
+        self,
+        sweep: Union[Sweep, Sequence[Sweep]],
+        input_trigger: int = None,
+        output_trigger: int = None,
+        trigger_type: str = None,
+        trigger_width: float = None,
+    ):
+        """
+        Register the 1D/2D buffered sweep with triggers for the LNHR DAC 2 - make sure to have correct bandwidth (high or low) on used channels!
+
+        Args:
+            sweep (Union[Sweep, Sequence[Sweep]]): qcutils Sweep or list of Sweeps
+            trigger_type (str): Type of trigger for Basel dac
+        Returns:
+            num_points (int): Number of points in the sweep
+            step_time (int | float): Duration of the innermost sweep in seconds. num_points * step_time = total time of the whole sweep sequence
+        """
+
+        # minimum delay you can have between steps in a ramp
+        minimum_delay = 20 * 1e-6  # 20 us
+
+        self._process_sweeps(sweep)
+
+        inner_sampling_rate = self.delay
+
+        if self.delay < minimum_delay:
+            raise ValueError(f"Delay is too small, use at least {minimum_delay} s")
+
+        if len(self.sweeps) == 2:
+            num_points = self.num
+
+            inner_sweep = sweep[1]
+            outer_sweep = sweep[0]
+
+            inner_voltages = inner_sweep.values
+            outer_voltages = outer_sweep.values
+
+            self.contacts = {
+                inner_sweep.parameter[0].name: inner_sweep.parameter[
+                    0
+                ].instrument._channum,
+                outer_sweep.parameter[0].name: outer_sweep.parameter[
+                    0
+                ].instrument._channum,
+            }
+
+            inner_channel = self.contacts[inner_sweep.parameter[0].name]
+            outer_channel = self.contacts[outer_sweep.parameter[0].name]
+
+            if inner_channel < 13 and outer_channel > 12:
+                inner_awg = self.core.awga
+                outer_awg = self.core.awgc
+            elif inner_channel > 12 and outer_channel < 13:
+                inner_awg = self.core.awgc
+                outer_awg = self.core.awga
+            else:
+                raise ValueError(
+                    "Inner and outer channels must be on different AWGs (1-12 on AWG A, 13-24 on AWG C)"
+                )
+
+            # manually write the awg arrangement for the BaselDAC
+            inner_awg.enable(False)
+            outer_awg.enable(False)
+
+            inner_awg.write_awg_config(
+                {
+                    "channel": inner_channel,
+                    "cycles": len(outer_voltages),
+                    "sampling_rate": inner_sampling_rate,
+                    "waveform": inner_voltages,
+                }
+            )
+
+            outer_awg.write_awg_config(
+                {
+                    "channel": outer_channel,
+                    "cycles": 1,
+                    "sampling_rate": inner_sampling_rate * len(inner_voltages),
+                    "waveform": outer_voltages,
+                }
+            )
+
+            inner_awg.trigger("disable")
+            outer_awg.trigger("single step")
+
+            self._BaselDAC_sweep_start = lambda: self.core.run_awg_sweep(
+                [inner_awg, outer_awg]
+            )  # if it does not work only enable first inner awg!
+
+            return trigger_type, num_points, self.delay
+
+        elif len(self.sweeps) == 1:
+            num_points = self.num
+            sweep = self.sweeps[0]
+
+            self.contacts = {}
+            if isinstance(sweep.parameter, Sequence):
+                assert len(sweep.parameter) == 1, (
+                    "Only one parameter supported for 1D sweeps"
+                )
+                for param in sweep.parameter:
+                    self.contacts[param.name] = param.instrument._channum
+            else:
+                self.contacts[sweep.parameter.name] = (
+                    sweep.parameter.instrument._channum
+                )
+
+            channel_number = self.contacts[list(self.contacts.keys())[0]]
+
+            if channel_number < 13:
+                awg = self.core.awga
+            else:
+                awg = self.core.awgc
+
+            awg.enable(False)
+
+            awg.write_awg_config(
+                {
+                    "channel": channel_number,
+                    "cycles": 1,
+                    "sampling_rate": inner_sampling_rate,
+                    "waveform": sweep.values,
+                }
+            )
+
+            awg.trigger("disable")
+
+            self._BaselDAC_sweep_start = lambda: self.core.run_awg_sweep([awg])
+
+            return trigger_type, num_points, self.delay
+        else:
+            raise NotImplementedError("Only 1D and 2D sweeps are supported")
+
+    def run_sweep(self):
+        self._BaselDAC_sweep_start()
+
+    def register_dependent(
+        self,
+        dependent: Parameter | list[Parameter] | None,
+        num: int | list[int],
+        delay: int | float,
+        input_trigger: int = None,
+    ) -> None:
+        """
+        Args:
+            dependent (Parameter | list[Parameter] | None): Dependent parameter(s)
+                created by the VNA driver (must have `._sparam` attribute).
+            num (int | list[int]): Number of points expected (stored for fetch).
+        """
+        self._process_dependents(dependent)
+        self.num = num
 
     def fetch(self):
         """

@@ -182,11 +182,17 @@ def arm_instruments(
             instrument.run_sweep()
 
     if "dependent" in payload:
+        reserved_keys = {"instrument", "dependent"}
+
+        register_kwargs = {
+            key: value for key, value in payload.items() if key not in reserved_keys
+        }
+
         instrument.register_dependent(
             dependent=payload["dependent"],
             num=num_points,
             delay=step_time,
-            input_trigger=payload.get("input_trigger"),
+            **register_kwargs,
         )
 
     state.setdefault("visited_paths", []).append(path)
