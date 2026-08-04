@@ -115,8 +115,9 @@ class NodeMFLI(BufferedNodeBase):
         input_trigger: int = 1,
         *,
         trigger_delay: float = 0.0,
-        trigger_level: float = 0.3,
-        grid_mode: str = "exact",
+        trigger_level: float = 0.5,
+        tc_factor: float = 1.0,
+        grid_mode: str = "linear",
         edge: str = "rising",
         endless: bool = False,
         count: int = 1,
@@ -131,6 +132,7 @@ class NodeMFLI(BufferedNodeBase):
             delay: Step time (s) of the innermost sweep; DAQ duration ~ delay * cols.
             input_trigger: Which TrigIn (1 or 2) to use on the MFLI.
             trigger_delay: Delay (s) between trigger and first sample (default 0).
+            tc_factor: Factor to adjust the time constant of the demodulator. The time constant is set to delay/tc_factor. (default 1)
             grid_mode: DAQ grid mode; 1=nearest, 2=linear, 4=exact grid (default).
             edge: Trigger edge; one of "rising", "falling", "both".
             endless: If True, run continuous acquisition (advanced use).
@@ -152,7 +154,9 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module.set("grid/mode", grid_mode)
 
         self.daq.setInt(f"/{self.serial}/demods/0/enable", 1)
-        self.daq.setDouble(f"/{self.serial}/demods/0/timeconstant", float(delay))
+        self.daq.setDouble(
+            f"/{self.serial}/demods/0/timeconstant", float(delay) / tc_factor
+        )  # control the time constant in relation to delay
 
         self.daq_module.finish()
         self.daq_module.unsubscribe("*")
@@ -184,10 +188,11 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module.set("grid/cols", cols)
 
         if grid_mode != "exact":
-            self.daq_module.set("duration", float(delay) * cols)
+            duration = float(delay) * (cols - 1)
+            self.daq_module.set("duration", duration)
 
-        # trigger delay
-        self.daq_module.set("delay", trigger_delay)
+        # trigger delay - shift data points to end of each ramp step, trigger_delay governs deviations from that
+        self.daq_module.set("delay", float(delay) + trigger_delay)
 
         self.daq_module.set("holdoff/time", max(0.0, float(delay) * (cols - 0.5)))
 
@@ -265,8 +270,9 @@ class NodeUHFLI(BufferedNodeBase):
         *,
         demod_channels: Union[int, Sequence[int]] = 0,
         trigger_delay: float = 0.0,
-        trigger_level: float = 0.3,
-        grid_mode: str = "exact",
+        trigger_level: float = 0.5,
+        tc_factor: float = 1.0,
+        grid_mode: str = "linear",
         edge: str = "rising",
         endless: bool = False,
         count: int = 1,
@@ -282,6 +288,7 @@ class NodeUHFLI(BufferedNodeBase):
             delay: Step time (s) of the innermost sweep; DAQ duration ~ delay * cols.
             input_trigger: Which TrigIn (1 or 2) to use on the MFLI.
             trigger_delay: Delay (s) between trigger and first sample (default 0).
+            tc_factor: Factor to adjust the time constant of the demodulator. The time constant is set to delay/tc_factor. (default 1)
             grid_mode: DAQ grid mode; 1=nearest, 2=linear, 4=exact grid (default).
             edge: Trigger edge; one of "rising", "falling", "both".
             endless: If True, run continuous acquisition (advanced use).
@@ -305,8 +312,8 @@ class NodeUHFLI(BufferedNodeBase):
         for demod in np.atleast_1d(demod_channels):
             self.daq.setInt(f"/{self.serial}/demods/{demod}/enable", 1)
             self.daq.setDouble(
-                f"/{self.serial}/demods/{demod}/timeconstant", float(delay)
-            )
+                f"/{self.serial}/demods/{demod}/timeconstant", float(delay) / tc_factor
+            )  # control the time constant in relation to delay
 
         self.daq_module.finish()
         self.daq_module.unsubscribe("*")
@@ -344,10 +351,11 @@ class NodeUHFLI(BufferedNodeBase):
         self.daq_module.set("grid/cols", cols)
 
         if grid_mode != "exact":
-            self.daq_module.set("duration", float(delay) * cols)
+            duration = float(delay) * (cols - 1)
+            self.daq_module.set("duration", duration)
 
-        # trigger delay
-        self.daq_module.set("delay", trigger_delay)
+        # trigger delay - shift data points to end of each ramp step, trigger_delay governs deviations from that
+        self.daq_module.set("delay", float(delay) + trigger_delay)
 
         self.daq_module.set("holdoff/time", max(0.0, float(delay) * (cols - 0.5)))
 
