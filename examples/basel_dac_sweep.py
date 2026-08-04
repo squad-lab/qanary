@@ -93,9 +93,9 @@ gate2 = st.add_parameter("gate2", "Dac channel 13", dac.ch13.voltage)
 
 #%%
 
-def test_1d_sweep():
+def test_1d_sweep(V_start=0, V_stop=1, num_points=100, delay=0.03*1e-3):
 
-    gate1_sweep = Sweep(gate1, 0, 1, num=10, start_delay=0, delay=0.03*1e-3)
+    gate1_sweep = Sweep(gate1, V_start, V_stop, num=num_points, start_delay=0, delay=delay)
 
     dummy.prepare_buffer(gate1_sweep.num)
 
@@ -108,12 +108,12 @@ def test_1d_sweep():
     run_dict["experiment_name"] = "test buffered Basel DAC 1d"
 
     gate1(0)
-    gate2(0)
-    time.sleep(0.5)
+    time.sleep(1)
 
     measure.run(
         [buffered_sweep],
         dependents=[],
+        no_hashing=True,
         **run_dict,
     )
 
@@ -147,6 +147,38 @@ def test_2d_sweep():
         **run_dict,
     )
 
+#%%
+
+# pulse sequence to check if awg is synced up with DAQ module
+
+delay = 30 * 1e-6 # use as standard trigger_delay
+
+number_pulses = 10 # set columns = 2*number_pulses + 1, duration = delay * (columns - 1)
+pulse_heigt = 0.1
+
+waveform = []
+for i in range(number_pulses):
+    waveform.append(0)
+    waveform.append(pulse_heigt)
+waveform.append(0)
+
+
+awg = dac.awga
+
+awg.write_awg_config({
+    "channel": 1,
+    "cycles": 1,
+    "sampling_rate": delay,
+    "waveform": np.array(waveform),
+})
+
+awg.trigger("disable")
+gate1(0)
+sleep(0.5)
+
+dac.run_awg_sweep([awg])
+
+# %%
 
 # %%
 
