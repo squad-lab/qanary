@@ -188,7 +188,7 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module.set("grid/cols", cols)
 
         if grid_mode != "exact":
-            duration = float(delay) * (cols - 1)
+            duration = float(delay) * cols
             self.daq_module.set("duration", duration)
 
         # trigger delay - shift data points to end of each ramp step, trigger_delay governs deviations from that
@@ -248,7 +248,9 @@ class NodeUHFLI(BufferedNodeBase):
     Minimum trigger width is 1e-4s. Set the trigger width in the parent instrument accordingly.
     """
 
-    def __init__(self, inst: Instrument, *args, **kwargs) -> None:
+    _shared = {}
+
+    def __init__(self, inst: Instrument, *args, **kwargs):
         super().__init__(inst=inst, *args, **kwargs)
 
         self.core = self.core.core
@@ -259,9 +261,125 @@ class NodeUHFLI(BufferedNodeBase):
         self.daq_module.set("device", self.serial)
         self.daq_module.set("type", 6)
 
-        self._subs: list[str] = []
+        # Shared state per physical UHFLI
+        if self.serial not in self._shared:
+            sweeper = self.daq.sweep()
+            sweeper.set("device", self.serial)
 
-    def register_dependent(
+            self._shared[self.serial] = {
+                "sweeper_module": sweeper,
+                "subs": [],
+                "sweeper_fields": [],
+            }
+
+        self._ctx = self._shared[self.serial]
+
+        self.sweeper_module = self._ctx["sweeper_module"]
+
+        self._active_acquisition = None
+
+    def register_sweep(
+        self,
+        sweep: Union[Sweep, Sequence[Sweep]],
+        input_trigger: int = None,
+        output_trigger: int = None,
+        trigger_type: str = None,
+        trigger_width: float = None,
+        *,
+        scan: int = 0,
+        spacing: str = "lin",
+        averaging_tc: float = 3.0,
+        averaging_sample: int = 1,
+        phase_unwrap: bool = False,
+        **kwargs,
+    ) -> None:
+        """
+        Configure and start a buffered sweep with the LabOne Sweeper Module. No triggering pissble/necessary
+        You can sweep all eight demodulator frequencies and the eight amplitudes of both outputs.
+
+        Parameters
+        ----------
+        sweep:
+            qcutils Sweep object defining start, stop and num.
+        scan:
+            Sweeper scan direction/mode. 0 = sequential forward.
+        spacing:
+            "lin" = linear frequency axis (default), "log" = logarithmic.
+        loopcount:
+            Number of complete sweeps.
+        """
+
+        if len(sweep) > 1:
+            raise ValueError(
+                "Only 1D sweeps are supported with the Sweeper module, with one parameter being swept."
+            )
+        else:
+            single_sweep = sweep[0]
+
+        self.num = int(single_sweep.num)
+        self.delay = float(single_sweep.delay)
+
+        sweep_parameter = single_sweep.parameter[0]
+
+        if not hasattr(sweep_parameter, "zi_node"):
+            raise ValueError(
+                f"Parameter {sweep_parameter.full_name!r} cannot be swept "
+                "with the Zurich Instruments Sweeper because it has no zi_node."
+            )
+
+        gridnode = f"/{self.serial}/{sweep_parameter.zi_node.lower().lstrip('/')}"
+        self.sweeper_module.set("gridnode", gridnode)
+
+        self.sweeper_module.set("start", float(single_sweep.start))
+        self.sweeper_module.set("stop", float(single_sweep.stop))
+        self.sweeper_module.set("samplecount", int(self.num))
+
+        if spacing == "lin":
+            xmapping = 0
+        elif spacing == "log":
+            xmapping = 1
+        else:
+            raise ValueError(f"Invalid spacing: {spacing}. Must be 'lin' or 'log'.")
+
+        self.sweeper_module.set("scan", int(scan))
+        self.sweeper_module.set("xmapping", xmapping)
+
+        self.sweeper_module.set("bandwidthcontrol", 2)  # Auto
+        self.sweeper_module.set("bandwidthoverlap", 0)
+        self.sweeper_module.set("loopcount", 0)
+        self.sweeper_module.set("settling/inaccuracy", 0.001)
+
+        self.sweeper_module.set(
+            "settling/time",
+            0,  # float(self.delay),
+        )
+
+        self.sweeper_module.set(
+            "averaging/tc",
+            float(averaging_tc),
+        )
+
+        self.sweeper_module.set(
+            "averaging/sample",
+            int(averaging_sample),
+        )
+
+        self.sweeper_module.set(
+            "phaseunwrap",
+            int(phase_unwrap),
+        )
+
+        num_points = self.num
+
+        return None, num_points, None
+
+    def run_sweep(self):
+        self.daq_module.finish()
+        self.sweeper_module.execute()
+        if self.toplevel:
+            sleep((self.num + 1) * self.delay)
+
+    def _register_daq_dependent(
         self,
         dependent: Union[Parameter, Sequence[Parameter]],
         num: int | Sequence[int],
@@ -276,6 +394,7 @@ class NodeUHFLI(BufferedNodeBase):
         edge: str = "rising",
         endless: bool = False,
         count: int = 1,
+        **kwargs,
     ) -> None:
         """
         Configure DAQ for a hardware-triggered, exact-grid acquisition and start it.
@@ -351,7 +470,7 @@ class NodeUHFLI(BufferedNodeBase):
         self.daq_module.set("grid/cols", cols)
 
         if grid_mode != "exact":
-            duration = float(delay) * (cols - 1)
+            duration = float(delay) * cols
             self.daq_module.set("duration", duration)
 
         # trigger delay - shift data points to end of each ramp step, trigger_delay governs deviations from that
@@ -367,7 +486,122 @@ class NodeUHFLI(BufferedNodeBase):
 
         self.daq_module.execute()
 
-    def fetch(self, *, timeout: float = 15.0) -> list[np.ndarray]:
+    def _register_sweeper_dependent(
+        self,
+        dependent: Union[Parameter, Sequence[Parameter]],
+        num: int | Sequence[int],
+        delay: float,
+        input_trigger: int = None,
+        **kwargs,
+    ) -> None:
+
+        if not self.endnode:
+            raise ValueError("Sweeper dependents can only be registered on end nodes.")
+
+        if isinstance(dependent, Sequence):
+            dependents = list(dependent)
+        else:
+            dependents = [dependent]
+
+        self.dependents = dependents
+
+        # Mapping:
+        # QCoDeS dependent -> sweeper sample field
+        sweeper_fields = []
+
+        # Subscribe each demod sample node only once
+        sample_paths = set()
+
+        for dep in dependents:
+            zi_node = dep.zi_node.lower()
+
+            # e.g.
+            # /demods/0/sample.r
+            # ->
+            # /demods/0/sample
+            if zi_node.endswith(".r"):
+                sample_path = zi_node.removesuffix(".r")
+                field = "r"
+
+            elif zi_node.endswith(".theta"):
+                sample_path = zi_node.removesuffix(".theta")
+                field = "phase"
+
+            elif zi_node.endswith(".x"):
+                sample_path = zi_node.removesuffix(".x")
+                field = "x"
+
+            elif zi_node.endswith(".y"):
+                sample_path = zi_node.removesuffix(".y")
+                field = "y"
+
+            else:
+                raise ValueError(f"Unsupported Sweeper dependent: {zi_node!r}")
+
+            full_path = f"/{self.serial}{sample_path}"
+
+            sample_paths.add(full_path)
+
+            sweeper_fields.append(
+                {
+                    "dependent": dep,
+                    "path": full_path,
+                    "field": field,
+                }
+            )
+
+        self._ctx["subs"] = list(sample_paths)
+        self._ctx["sweeper_fields"] = sweeper_fields
+
+        self.sweeper_module.unsubscribe("*")
+
+        for path in self._ctx["subs"]:
+            self.sweeper_module.subscribe(path)
+
+    def register_dependent(
+        self,
+        dependent,
+        num: int | list[int],
+        delay,
+        *,
+        acquisition: str = "daq",
+        **kwargs,
+    ) -> None:
+
+        if acquisition == "daq":
+            self._register_daq_dependent(
+                dependent=dependent,
+                num=num,
+                delay=delay,
+                **kwargs,
+            )
+
+        elif acquisition == "sweeper":
+            self._register_sweeper_dependent(
+                dependent=dependent,
+                num=num,
+                delay=delay,
+                **kwargs,
+            )
+
+        else:
+            raise ValueError(
+                f"Unknown acquisition mode {acquisition!r}. "
+                "Expected 'daq' or 'sweeper'."
+            )
+
+        self._active_acquisition = acquisition
+
+    def fetch(self, *, timeout: float = 15.0):
+        if self._active_acquisition == "daq":
+            return self._fetch_daq(timeout=timeout)
+
+        if self._active_acquisition == "sweeper":
+            return self._fetch_sweeper(timeout=timeout)
+
+        raise RuntimeError("No acquisition has been registered.")
+
+    def _fetch_daq(self, *, timeout: float = 15.0) -> list[np.ndarray]:
         """
         Wait for DAQ completion and return a list of numpy arrays,
         one for each subscribed path in self._subs.
@@ -388,6 +622,47 @@ class NodeUHFLI(BufferedNodeBase):
                 "value"
             ]
             arrays.append(np.array(data).flatten())
+
+        return arrays
+
+    def _fetch_sweeper(self, *, timeout: float = 30.0):
+
+        t0 = time()
+
+        while not self.sweeper_module.finished():
+            if time() - t0 > timeout:
+                self.sweeper_module.finish()
+                raise TimeoutError("Sweeper acquisition timed out.")
+
+            sleep(0.05)
+
+        self.sweeper_module.finish()
+        result = self.sweeper_module.read()
+
+        arrays = []
+
+        for spec in self._ctx["sweeper_fields"]:
+            path = spec["path"]
+            field = spec["field"]
+
+            # Example:
+            # /dev2793/demods/0/sample
+            parts = path.strip("/").split("/")
+
+            device = parts[0]  # dev2793
+            demod = parts[2]  # 0
+
+            sample = result[device]["demods"][demod]["sample"][0][0]
+
+            if field not in sample:
+                raise KeyError(
+                    f"Field {field!r} not found in Sweeper sample. "
+                    f"Available fields: {list(sample.keys())}"
+                )
+
+            arrays.append(np.asarray(sample[field]).flatten())
+
+        self.sweeper_module.unsubscribe("*")
 
         return arrays
 
