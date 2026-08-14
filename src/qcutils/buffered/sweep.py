@@ -168,6 +168,12 @@ def arm_instruments(
     Configure instruments and propagate sweep values.
     """
 
+    reserved_keys = {"instrument", "dependent", "sweeps", "nodes"}
+
+    register_kwargs = {
+        key: value for key, value in payload.items() if key not in reserved_keys
+    }
+
     if "sweeps" in payload:
         trigger_type, points_new, inner_step = instrument.register_sweep(
             sweep=payload["sweeps"],
@@ -175,6 +181,7 @@ def arm_instruments(
             output_trigger=payload.get("output_trigger"),
             trigger_type=payload.get("trigger_type", "step"),
             trigger_width=payload.get("trigger_width", 1e-4),
+            **register_kwargs,
         )
         num_points *= points_new
         step_time = inner_step
@@ -182,12 +189,6 @@ def arm_instruments(
             instrument.run_sweep()
 
     if "dependent" in payload:
-        reserved_keys = {"instrument", "dependent", "sweeps"}
-
-        register_kwargs = {
-            key: value for key, value in payload.items() if key not in reserved_keys
-        }
-
         instrument.register_dependent(
             dependent=payload["dependent"],
             num=num_points,
