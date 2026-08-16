@@ -286,10 +286,11 @@ class NodeUHFLI(BufferedNodeBase):
         trigger_type: str = None,
         trigger_width: float = None,
         *,
-        scan: int = 0,
         spacing: str = "lin",
-        averaging_tc: float = 3.0,
-        averaging_sample: int = 1,
+        averaging: int = 1,
+        averaging_tc: int = 5,
+        sweep_order: int = 3,
+        settling_inaccuracy: float = 100 * 1e-6,
         phase_unwrap: bool = False,
         **kwargs,
     ) -> None:
@@ -301,12 +302,18 @@ class NodeUHFLI(BufferedNodeBase):
         ----------
         sweep:
             qcutils Sweep object defining start, stop and num.
-        scan:
-            Sweeper scan direction/mode. 0 = sequential forward.
         spacing:
             "lin" = linear frequency axis (default), "log" = logarithmic.
-        loopcount:
-            Number of complete sweeps.
+        averaging:
+            Number of averages for each sweep point.
+        averaging_tc:
+            Sets the effective number of time constants per sweeper parameter point that is considered in the measurement.
+        sweep_order:
+            Order of the sweep (filter roll off).
+        settling_inaccuracy:
+            Demodulator filter settling inaccuracy defining the wait time between a sweep parameter change and recording of the next sweep point.
+        phase_unwrap:
+            If True, the phase is unwrapped to avoid jumps of 2pi in the phase data.
         """
 
         if len(sweep) > 1:
@@ -341,27 +348,33 @@ class NodeUHFLI(BufferedNodeBase):
         else:
             raise ValueError(f"Invalid spacing: {spacing}. Must be 'lin' or 'log'.")
 
-        self.sweeper_module.set("scan", int(scan))
+        self.sweeper_module.set("scan", 0)  # sequential forward
         self.sweeper_module.set("xmapping", xmapping)
 
         self.sweeper_module.set("bandwidthcontrol", 2)  # Auto
         self.sweeper_module.set("bandwidthoverlap", 0)
-        self.sweeper_module.set("loopcount", 0)
-        self.sweeper_module.set("settling/inaccuracy", 0.001)
+        self.sweeper_module.set("loopcount", 1)
+
+        self.sweeper_module.set("settling/time", 0)
 
         self.sweeper_module.set(
-            "settling/time",
-            0,  # float(self.delay),
-        )
-
-        self.sweeper_module.set(
-            "averaging/tc",
-            float(averaging_tc),
+            "settling/inaccuracy",
+            float(settling_inaccuracy),
         )
 
         self.sweeper_module.set(
             "averaging/sample",
-            int(averaging_sample),
+            int(averaging),
+        )
+
+        self.sweeper_module.set(
+            "averaging/tc",
+            int(averaging_tc),
+        )
+
+        self.sweeper_module.set(
+            "order",
+            int(sweep_order),
         )
 
         self.sweeper_module.set(
@@ -597,7 +610,7 @@ class NodeUHFLI(BufferedNodeBase):
             return self._fetch_daq(timeout=timeout)
 
         if self._active_acquisition == "sweeper":
-            return self._fetch_sweeper(timeout=timeout)
+            return self._fetch_sweeper(timeout=2 * timeout)
 
         raise RuntimeError("No acquisition has been registered.")
 
@@ -625,14 +638,22 @@ class NodeUHFLI(BufferedNodeBase):
 
         return arrays
 
-    def _fetch_sweeper(self, *, timeout: float = 30.0):
+    def _fetch_sweeper(self, *, timeout: float = 30.0) -> list[np.ndarray]:
+
+        remaining = self.sweeper_module.getDouble("remainingtime")
+        while np.isnan(remaining):
+            sleep(0.1)
+            remaining = self.sweeper_module.getDouble("remainingtime")
 
         t0 = time()
+        real_timeout = remaining + timeout
 
         while not self.sweeper_module.finished():
-            if time() - t0 > timeout:
+            if time() - t0 > real_timeout:
                 self.sweeper_module.finish()
-                raise TimeoutError("Sweeper acquisition timed out.")
+                raise TimeoutError(
+                    f"Sweeper acquisition timed out after {real_timeout:.1f} s."
+                )
 
             sleep(0.05)
 
