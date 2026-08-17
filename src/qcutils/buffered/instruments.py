@@ -2,6 +2,8 @@ from time import sleep, time
 from typing import Sequence, Union
 
 import numpy as np
+from pyvisa.constants import StatusCode
+from pyvisa.errors import VisaIOError
 from qcodes.instrument import Instrument
 from qcodes.parameters import Parameter
 
@@ -73,6 +75,9 @@ class BufferedNodeBase:
             self.dependents = dependent
 
         # self.sweepnode = False
+
+    def abort(self) -> None:
+        """Stop active work owned by this buffered node, if any."""
 
 
 class NodeMFLI(BufferedNodeBase):
@@ -507,7 +512,6 @@ class NodeUHFLI(BufferedNodeBase):
         input_trigger: int = None,
         **kwargs,
     ) -> None:
-
         if not self.endnode:
             raise ValueError("Sweeper dependents can only be registered on end nodes.")
 
@@ -580,7 +584,6 @@ class NodeUHFLI(BufferedNodeBase):
         acquisition: str = "daq",
         **kwargs,
     ) -> None:
-
         if acquisition == "daq":
             self._register_daq_dependent(
                 dependent=dependent,
@@ -639,7 +642,6 @@ class NodeUHFLI(BufferedNodeBase):
         return arrays
 
     def _fetch_sweeper(self, *, timeout: float = 30.0) -> list[np.ndarray]:
-
         remaining = self.sweeper_module.getDouble("remainingtime")
         while np.isnan(remaining):
             sleep(0.1)
@@ -709,20 +711,8 @@ class NodeKeysightDMM(BufferedNodeBase):
 
     def __init__(self, inst: Instrument, *args, **kwargs) -> None:
         super().__init__(inst=inst, *args, **kwargs)
-
-    def _set_nplc(self, delay: int | float) -> None:
-        """
-        Set the DMM integration time (NPLC) such that it fits within the
-        requested delay time.
-
-        Args:
-            delay (int | float): Available measurement time per point in seconds.
-        """
-        nplc_list = self.core.NPLC_list
-        for nplc in nplc_list:
-            if delay > nplc / self.core.line_frequency():
-                self.core.NPLC(nplc)
-                return
+        self.core.trigger.source("IMM")
+        self.core.reset()
 
     def register_dependent(
         self,
@@ -730,6 +720,7 @@ class NodeKeysightDMM(BufferedNodeBase):
         num: int | Sequence[int],
         delay: int | float,
         input_trigger: int = 1,
+        trigger_type: str = "step",
     ) -> None:
         """
         Configure the Keysight DMM for a buffered, externally triggered acquisition.
@@ -739,8 +730,8 @@ class NodeKeysightDMM(BufferedNodeBase):
                 Dependent parameter(s) associated with this node.
             num (int | Sequence[int]):
                 Number of points. For 2D acquisitions, pass (rows, cols) where:
-                    rows := points acquired per trigger
-                    cols := number of trigger events
+                    cols := points acquired per trigger
+                    rows := number of trigger events
             delay (int | float):
                 Step time in seconds. Used for integration time and sample timing.
             input_trigger (int):
@@ -748,19 +739,51 @@ class NodeKeysightDMM(BufferedNodeBase):
         """
         self._process_dependents(dependent)
         self.num = num
+        self.delay = delay
+        self.trigger_type = trigger_type
+        if input_trigger == 1:
+            self.core.trigger.source("EXT")
+        else:
+            raise NotImplementedError(
+                "Only input_trigger=1 (EXT) is supported for Keysight DMM"
+            )
+        self.core.trigger.slope("POS")
+        self.core.autorange("OFF")
+        self.core.autozero("OFF")
 
         if isinstance(num, Sequence) and not isinstance(num, (str, bytes)):
             rows, cols = int(num[0]), int(num[1])
         else:
-            rows, cols = 1, int(num)
+            if self.trigger_type == "step":
+                self.core.sample.count(1)
+                self.core.trigger.count(self.num)
 
-        self.core.trigger.source("EXT")
-        self.core.sample.timer(delay)
-        self.core.sample.count(rows)
-        self.core.trigger.count(cols)
+                if self.core.model == "34410A":
+                    self.core.trigger.delay(0.1 * self.delay)
+                elif self.core.model == "34461A":
+                    self.core.trigger.delay(0.2 * self.delay)
+                else:
+                    raise NotImplementedError(
+                        f"Trigger type 'step' not implemented for {self.core.model}"
+                    )
 
-        self._set_nplc(delay)
+            else:
+                raise NotImplementedError(
+                    f"Trigger type '{self.trigger_type}' not implemented for Keysight DMM"
+                )
+
+        trigger_delay = 0.2 * self.delay
+        self.core.trigger.delay(trigger_delay)
+
+        available = 0.8 * (self.delay - trigger_delay)
+
+        for nplc in reversed(self.core.NPLC_list):
+            if nplc / self.core.line_frequency() < available:
+                self.core.NPLC(nplc)
+                break
+
         self.core.init_measurement()
+        sleep(0.1)
 
     def fetch(self) -> list[np.ndarray]:
         """
@@ -775,13 +798,26 @@ class NodeKeysightDMM(BufferedNodeBase):
         else:
             num = int(self.num)
 
-        with self.core.timeout.set_to(num):
-            data = self.core.fetch()
-            self.core.trigger.source("IMM")
-            self.core.sample.timer("MIN")
-            self.core.sample.count(1)
-            self.core.trigger.count(1)
-            return [np.asarray(data).flatten()]
+        try:
+            with self.core.timeout.set_to(max(5, num * self.delay + 2)):
+                data = self.core.fetch()
+        except VisaIOError as exc:
+            if exc.error_code != StatusCode.error_timeout:
+                raise
+
+            raise
+        finally:
+            self.abort()
+
+        return [np.asarray(data).flatten()]
+
+    def abort(self) -> None:
+        """Abort acquisition and restore settings for ordinary scalar reads."""
+        self.core.device_clear()
+        self.core.abort_measurement()
+        self.core.sample.count(1)
+        self.core.trigger.count(1)
+        self.core.trigger.source("IMM")
 
 
 class NodeQDAC2(BufferedNodeBase):
@@ -954,9 +990,20 @@ class NodeQDAC2(BufferedNodeBase):
             raise NotImplementedError("Only 1D and 2D sweeps are supported")
 
     def run_sweep(self):
+        self._sweep_active = True
         self._qdac_sweep.start()
-        if self.toplevel:
-            sleep((self.num + 1) * self.delay)
+        try:
+            if self.toplevel:
+                sleep((self.num + 1) * self.delay)
+        finally:
+            if self.toplevel:
+                self.abort()
+
+    def abort(self) -> None:
+        """Stop the active QDAC list sweep and release its trigger routing."""
+        if getattr(self, "_sweep_active", False):
+            self._qdac_sweep.close()
+            self._sweep_active = False
 
     def register_dependent(
         self,

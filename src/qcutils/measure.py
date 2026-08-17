@@ -21,11 +21,11 @@ from tqdm import tqdm
 
 # Local imports
 from qcutils import live_server
-from qcutils.shared import live_db
-from qcutils.buffered.sweep import fetch_dependents_tree
+from qcutils.buffered.sweep import abort_instruments, fetch_dependents_tree
 from qcutils.logger import get_logger
-from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
 from qcutils.parameters import ParameterMixin
+from qcutils.shared import live_db
+from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
 
 logger = get_logger(__name__)
 
@@ -161,17 +161,29 @@ bar = None
 
 def _sanitize_for_json(obj):
     """
-    Recursively convert numpy arrays in a structure to lists,
-    so the result is JSON-serializable.
+    Recursively convert snapshot values to JSON-serializable objects.
+
+    Instrument snapshots may contain driver-specific context objects in
+    parameter caches (for example ``QDac2Trigger_Context`` after a sweep).
+    Preserve ordinary JSON values and stringify unsupported objects rather
+    than failing the whole measurement metadata export.
     """
     if isinstance(obj, np.ndarray):
         return obj.tolist()
 
+    if isinstance(obj, np.generic):
+        return obj.item()
+
     if isinstance(obj, dict):
         return {k: _sanitize_for_json(v) for k, v in obj.items()}
 
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, (list, tuple, set)):
         return [_sanitize_for_json(v) for v in obj]
+
+    try:
+        json.dumps(obj)
+    except (TypeError, ValueError):
+        return str(obj)
 
     return obj
 
@@ -270,19 +282,23 @@ class Measurement:
         logger.info(f"Measurement Location: {self.data}")
 
     def get_installed_packages(self):
-        try:
-            pip_output = subprocess.check_output(
-                [sys.executable, "-m", "pip", "freeze"]
-            ).decode()
-        except subprocess.CalledProcessError:
-            pip_output = ""
+        # uv-created environments do not necessarily contain the pip module.
+        # Prefer uv, then quietly fall back to pip for non-uv environments.
+        commands = (
+            ["uv", "pip", "freeze"],
+            [sys.executable, "-m", "pip", "freeze"],
+        )
+        for command in commands:
+            try:
+                return subprocess.check_output(
+                    command,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
 
-        try:
-            uv_output = subprocess.check_output(["uv", "pip", "freeze"]).decode()
-        except subprocess.CalledProcessError:
-            uv_output = ""
-
-        return pip_output + uv_output
+        return ""
 
     def _make_dataarray(self, sweeps, dependent):
         """Create a dataarray for the dependent parameter
@@ -731,8 +747,6 @@ class Measurement:
         # Do the measurement
         dataset: Optional[xr.Dataset] = None
         finalized = False
-        interrupted = False
-        return_code = None
         try:
             total_points = 1
             for sweep in sweeps:
@@ -802,9 +816,12 @@ class Measurement:
             return
 
         except KeyboardInterrupt:
-            interrupted = True
-            logger.warning("Measurement interrupted, ramping down instruments")
+            logger.warning("Measurement interrupted; stopping buffered instruments")
+            if buffered_sweep is not None:
+                abort_instruments(buffered_sweep)
+
             if rampdown_on_interrupt:
+                logger.info("Ramping down swept parameters")
                 rampdown_sweeps = [
                     Sweep(sweep.parameter, sweep.parameter(), 0.0, num=100, delay=1e-2)
                     for sweep in sweeps
@@ -817,7 +834,7 @@ class Measurement:
                             )
                         )
                 sweeper(rampdown_sweeps)
-                return_code = 1
+            raise
         except Exception as e:
             logger.exception(f"Measurement failed with error: {e}", exc_info=True)
         finally:
@@ -829,9 +846,6 @@ class Measurement:
             if not finalized:
                 self._finalize_disk_artifacts(dataset=dataset, verbose=verbose)
             unregister_memory_store(self.id)
-
-        if interrupted:
-            return return_code
 
 
 def run(

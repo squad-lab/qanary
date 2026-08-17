@@ -1,4 +1,5 @@
 from functools import wraps
+from inspect import signature
 from typing import Any, Dict, List, Optional, Tuple
 
 from qcutils.logger import get_logger
@@ -35,6 +36,7 @@ def parse_bufsweep_tree(visitor):
             toplevel: Optional[Any],
             num_points: int,
             step_time: float,
+            trigger_type: Optional[str],
             state: Dict[str, Any],
         ) -> Optional[Dict[str, Any]]
 
@@ -42,6 +44,7 @@ def parse_bufsweep_tree(visitor):
     down this node's subtree only:
         - "num_points" : int
         - "step_time"  : float
+        - "trigger_type": optional str
         - "toplevel"   : Any
         - "state"      : dict  (branch-local)
     """
@@ -77,6 +80,7 @@ def parse_bufsweep_tree(visitor):
         toplevel: Optional[Any] = None,
         num_points: int = 1,
         step_time: float = 0.0,
+        trigger_type: Optional[str] = None,
         state: Optional[Dict[str, Any]] = None,
         path: Tuple[str, ...] = (),
     ):
@@ -91,6 +95,7 @@ def parse_bufsweep_tree(visitor):
             toplevel_in: Optional[Any],
             num_pts_in: int,
             step_t_in: float,
+            trigger_type_in: Optional[str],
             state_in: Dict[str, Any],
             path_in: Tuple[str, ...],
         ) -> Optional[Any]:
@@ -103,6 +108,7 @@ def parse_bufsweep_tree(visitor):
 
             curr_num_points = num_pts_in
             curr_step_time = step_t_in
+            curr_trigger_type = payload.get("trigger_type", trigger_type_in)
             curr_state = state_in
             curr_path = (*path_in, node_name)
 
@@ -115,12 +121,14 @@ def parse_bufsweep_tree(visitor):
                 toplevel=curr_toplevel,
                 num_points=curr_num_points,
                 step_time=curr_step_time,
+                trigger_type=curr_trigger_type,
                 state=curr_state,
             )
 
             if isinstance(ret, dict):
                 curr_num_points = ret.get("num_points", curr_num_points)
                 curr_step_time = ret.get("step_time", curr_step_time)
+                curr_trigger_type = ret.get("trigger_type", curr_trigger_type)
                 curr_toplevel = ret.get("toplevel", curr_toplevel)
                 if "state" in ret:
                     curr_state = ret["state"]
@@ -137,6 +145,7 @@ def parse_bufsweep_tree(visitor):
                     curr_toplevel,
                     curr_num_points,
                     curr_step_time,
+                    curr_trigger_type,
                     curr_state,
                     curr_path,
                 )
@@ -145,7 +154,15 @@ def parse_bufsweep_tree(visitor):
 
         root_name = _name(root_payload, 1, default_root=True)
         return walk_one(
-            root_name, root_payload, None, toplevel, num_points, step_time, state, path
+            root_name,
+            root_payload,
+            None,
+            toplevel,
+            num_points,
+            step_time,
+            trigger_type,
+            state,
+            path,
         )
 
     return _walk_tree
@@ -161,6 +178,7 @@ def arm_instruments(
     instrument,
     num_points,
     step_time,
+    trigger_type,
     state,
     **kwargs,
 ):
@@ -168,20 +186,30 @@ def arm_instruments(
     Configure instruments and propagate sweep values.
     """
 
-    reserved_keys = {"instrument", "dependent", "sweeps", "nodes"}
-
-    register_kwargs = {
-        key: value for key, value in payload.items() if key not in reserved_keys
-    }
+    structural_keys = {"name", "instrument", "dependent", "sweeps", "nodes"}
 
     if "sweeps" in payload:
+        trigger_type = trigger_type or "step"
+
+        sweep_control_keys = {
+            "input_trigger",
+            "output_trigger",
+            "trigger_type",
+            "trigger_width",
+        }
+        sweep_kwargs = {
+            key: value
+            for key, value in payload.items()
+            if key not in structural_keys | sweep_control_keys
+        }
+
         trigger_type, points_new, inner_step = instrument.register_sweep(
             sweep=payload["sweeps"],
             input_trigger=payload.get("input_trigger"),
             output_trigger=payload.get("output_trigger"),
-            trigger_type=payload.get("trigger_type", "step"),
+            trigger_type=trigger_type,
             trigger_width=payload.get("trigger_width", 1e-4),
-            **register_kwargs,
+            **sweep_kwargs,
         )
         num_points *= points_new
         step_time = inner_step
@@ -189,16 +217,31 @@ def arm_instruments(
             instrument.run_sweep()
 
     if "dependent" in payload:
+        dependent_kwargs = {
+            key: value for key, value in payload.items() if key not in structural_keys
+        }
+
+        register_signature = signature(instrument.register_dependent)
+        if "trigger_type" in register_signature.parameters:
+            dependent_kwargs.setdefault("trigger_type", trigger_type or "step")
+        else:
+            dependent_kwargs.pop("trigger_type", None)
+
         instrument.register_dependent(
             dependent=payload["dependent"],
             num=num_points,
             delay=step_time,
-            **register_kwargs,
+            **dependent_kwargs,
         )
 
     state.setdefault("visited_paths", []).append(path)
 
-    return {"num_points": num_points, "step_time": step_time, "state": state}
+    return {
+        "num_points": num_points,
+        "step_time": step_time,
+        "trigger_type": trigger_type,
+        "state": state,
+    }
 
 
 @parse_bufsweep_tree
@@ -235,6 +278,15 @@ def fetch_dependents_tree(
                 "sweep_shape": sweep_shape,
                 "sweeps": sweeps,
             }
+
+
+@parse_bufsweep_tree
+def abort_instruments(node, payload, *, instrument, path, **kwargs):
+    """Abort every instrument in a buffered sweep tree."""
+    try:
+        instrument.abort()
+    except Exception as exc:
+        logger.warning("[%s] failed to abort instrument: %s", "/".join(path), exc)
 
 
 @parse_bufsweep_tree
