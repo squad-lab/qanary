@@ -427,8 +427,8 @@ wheels = [
 
 [[package]]
 name = "drivers"
-version = "2.1.0"
-source = { git = "https://gitlab.com/squad-lab/measurements/drivers.git#fae64fc343978a1777272086c7d6f73715f90e58" }
+version = "2.2.0"
+source = { git = "https://gitlab.com/squad-lab/measurements/drivers.git#ef7b05b720a7ed351d9e5bacb2cc2ade89c5f7bc" }
 dependencies = [
     { name = "ipykernel" },
     { name = "matplotlib" },

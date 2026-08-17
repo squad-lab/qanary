@@ -50,7 +50,7 @@ package = true
 
 [tool.uv.sources]
 qcutils = { workspace = true }
-drivers = { git = "https://gitlab.com/squad-lab/measurements/drivers.git"}
+drivers = { git = "https://gitlab.com/squad-lab/measurements/drivers.git" }
 
 [build-system]
 requires = ["poetry-core"]
