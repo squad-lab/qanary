@@ -23,7 +23,7 @@ from tqdm import tqdm
 from qcutils import live_server
 from qcutils.buffered.sweep import abort_instruments, fetch_dependents_tree
 from qcutils.logger import get_logger
-from qcutils.parameters import ParameterMixin
+from qcutils.parameters import ParameterMixin, MultiChannelParameter
 from qcutils.shared import live_db
 from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
 
@@ -195,10 +195,16 @@ class Station:
         self.parameters = []
 
     def add_parameter(
-        self, name: str, label: str, param: Parameter, param_type: str = "gate"
+        self,
+        name: str,
+        label: str,
+        param: Parameter | Sequence[Parameter],
+        param_type: str = "gate",
     ):
-        pm = ParameterMixin(param, name, label, param_type)
-        param.label = label
+        if isinstance(param, Sequence):
+            pm = MultiChannelParameter(param, name, label, param_type)
+        else:
+            pm = ParameterMixin(param, name, label, param_type)
 
         if pm in self.parameters:
             raise ValueError(
