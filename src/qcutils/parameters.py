@@ -123,34 +123,18 @@ class VirtualGate(Parameter):
 
 
 class MultiChannelParameter(Parameter):
-    """
-    Parameter that groups multiple channels into a single control.
-
-    Setting this parameter applies the same value to all channels.
-    Getting it returns a tuple of the current channel values.
-
-    Parameters
-    ----------
-    channels : Sequence[Parameter]
-        Parameters controlled together.
-    name : str, optional
-        Parameter name. If None, an automatic name is generated.
-    label : str, optional
-        Display label. If None, a label is built from the channel labels.
-    unit : str, optional
-        Parameter unit. Defaults to "V".
-    **kwargs
-        Additional arguments passed to ``Parameter``.
-    """
-
     def __init__(
         self,
-        channels: Sequence[Parameter],
-        name: str | None = None,
-        label: str | None = None,
-        unit: str = "V",
-        **kwargs,
+        param: Sequence[Parameter],
+        name: str = None,
+        label: str = None,
+        param_type: str = "gates",
     ):
+        channels = list(param)
+
+        if not channels:
+            raise ValueError("At least one channel must be provided")
+
         root = _root_instrument(channels[0])
         if not all(_root_instrument(ch) is root for ch in channels):
             raise ValueError("All channels must belong to the same root instrument")
@@ -160,20 +144,20 @@ class MultiChannelParameter(Parameter):
             name = f"multi_channel_parameter_{channel_names}"
 
         if label is None:
-            label = "MultiChannelParameter: "
-            parts = [f"{ch.label}" for ch in channels]
-            label += " , ".join(parts)
+            label = "MultiChannelParameter: " + ", ".join(ch.label for ch in channels)
+
+        unit = channels[0].unit
 
         super().__init__(
             name=name,
             label=label,
             unit=unit,
-            instrument=channels[0].instrument,
+            instrument=root,
             vals=vals.Numbers(),
-            **kwargs,
         )
 
-        self.channels = list(channels)
+        self.channels = channels
+        self.param_type = param_type
 
     def set_raw(self, value: float):
         for ch in self.channels:
@@ -184,13 +168,28 @@ class MultiChannelParameter(Parameter):
 
         if all(v == values[0] for v in values):
             return float(values[0])
-        else:
-            return None
 
-    def snapshot_base(self, update=False, params_to_skip_update=None):
+        return None
+
+    def snapshot_base(
+        self,
+        update=False,
+        params_to_skip_update=None,
+    ):
         snap = super().snapshot_base(
             update=update,
             params_to_skip_update=params_to_skip_update,
         )
-        snap["channels"] = [ch.full_name for ch in self.channels]
+
+        snap["param_type"] = self.param_type
+
+        snap["channels"] = [
+            {
+                "name": ch.full_name,
+                "label": ch.label,
+                "unit": ch.unit,
+            }
+            for ch in self.channels
+        ]
+
         return snap
