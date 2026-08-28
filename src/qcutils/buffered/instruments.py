@@ -119,6 +119,7 @@ class NodeMFLI(BufferedNodeBase):
         delay: float,
         input_trigger: int = 1,
         *,
+        force_trigger: bool = False,
         trigger_delay: float = 0.0,
         trigger_level: float = 0.5,
         tc_factor: float = 1.0,
@@ -135,6 +136,7 @@ class NodeMFLI(BufferedNodeBase):
             num: Number of points. For 2D, pass (rows, cols) where rows is the number
                  of trigger events (outer loop) and cols the points per trigger.
             delay: Step time (s) of the innermost sweep; DAQ duration ~ delay * cols.
+            force_trigger: If True, force a trigger to start the acquisition.
             input_trigger: Which TrigIn (1 or 2) to use on the MFLI.
             trigger_delay: Delay (s) between trigger and first sample (default 0).
             tc_factor: Factor to adjust the time constant of the demodulator. The time constant is set to delay/tc_factor. (default 1)
@@ -154,6 +156,9 @@ class NodeMFLI(BufferedNodeBase):
             raise ValueError(
                 f"Invalid grid_mode: {grid_mode}. Must be nearest, linear or exact."
             )
+
+        # save force trigger
+        self._force_trigger = force_trigger
 
         # set grid mode
         self.daq_module.set("grid/mode", grid_mode)
@@ -208,6 +213,10 @@ class NodeMFLI(BufferedNodeBase):
             self._subs.append(path)
 
         self.daq_module.execute()
+
+        if self._force_trigger:
+            sleep(0.2)  # wait a bit for the DAQ to be ready
+            self.daq_module.set("forcetrigger", 1)
 
     def fetch(self, *, timeout: float = 15.0) -> list[np.ndarray]:
         """
@@ -405,6 +414,7 @@ class NodeUHFLI(BufferedNodeBase):
         input_trigger: int = 1,
         *,
         demod_channels: Union[int, Sequence[int]] = 0,
+        force_trigger: bool = False,
         trigger_delay: float = 0.0,
         trigger_level: float = 0.5,
         tc_factor: float = 1.0,
@@ -420,6 +430,7 @@ class NodeUHFLI(BufferedNodeBase):
         Args:
             dependent: LabOne node(s), e.g. "demods/0/sample.r" or list thereof.
             demod_channels: Demodulator channels to use for the dependent(s).
+            force_trigger: If True, force a trigger to start the acquisition.
             num: Number of points. For 2D, pass (rows, cols) where rows is the number
                  of trigger events (outer loop) and cols the points per trigger.
             delay: Step time (s) of the innermost sweep; DAQ duration ~ delay * cols.
@@ -442,6 +453,9 @@ class NodeUHFLI(BufferedNodeBase):
             raise ValueError(
                 f"Invalid grid_mode: {grid_mode}. Must be nearest, linear or exact."
             )
+
+        # save force trigger
+        self._force_trigger = force_trigger
 
         # set grid mode
         self.daq_module.set("grid/mode", grid_mode)
@@ -503,6 +517,10 @@ class NodeUHFLI(BufferedNodeBase):
             self._subs.append(path)
 
         self.daq_module.execute()
+
+        if self._force_trigger:
+            sleep(0.2)  # wait a bit for the DAQ to be ready
+            self.daq_module.set("forcetrigger", 1)
 
     def _register_sweeper_dependent(
         self,
@@ -1305,3 +1323,45 @@ class NodeBaselDAC(BufferedNodeBase):
             list[np.ndarray]: One array per dependent.
         """
         return [dep() for dep in self.dependents]
+
+
+class NodeDelay(BufferedNodeBase):
+    """
+    Virtual sweep node for buffered time sweeps.
+
+    The node does not actively step anything. It only defines the number of points and the time spacing for a downstream buffered acquisition, e.g. a Zurich Instruments DAQ module.
+    """
+
+    def __init__(self, inst: Instrument, *args, **kwargs):
+        super().__init__(inst=inst, *args, **kwargs)
+
+    def register_sweep(
+        self,
+        sweep: Union[Sweep, Sequence[Sweep]],
+        input_trigger=None,
+        output_trigger=None,
+        trigger_type=None,
+        trigger_width=None,
+        **kwargs,
+    ):
+        self._process_sweeps(sweep)
+
+        if len(self.sweeps) != 1:
+            raise ValueError("NodeDelay only supports 1D time sweeps.")
+
+        sw = self.sweeps[0]
+
+        self.num = int(sw.num)
+        self.delay = float(sw.delay)
+
+        return None, self.num, self.delay
+
+    def run_sweep(self):
+        """
+        Nothing to step physically.
+
+        The downstream acquisition module already runs asynchronously.
+        We only keep the top-level sweep alive long enough for the acquisition window.
+        """
+        if self.toplevel:
+            sleep((self.num + 1) * self.delay)
