@@ -52,28 +52,72 @@ class VirtualGate(Parameter):
         Linear scaling factors applied to the virtual gate value.
     offsets : list[float]
         Offsets added after scaling for each gate.
+    rot_angle_deg : float, optional
+        If provided, overrides factors and offsets to represent a rotation by this angle in degrees counter clockwise. first gate is x direction, second gate is y direction. Offsets are set to zero.
+    points : list[tuple[float, float]], optional
+        If provided, overrides factors and offsets to represent a virtual gate defined by two points in the 2D space of the first two gates. The first point defines the offset, and the direction from the first to the second point defines the factors. voltage steps along the virtual gate correspond to the distance between the two points.
     name : str, optional
         Parameter name. If None, a name is generated from the gate names.
     label : str, optional
         Display label. If None, a label describing the linear combination
         is generated automatically.
-    **kwargs
-        Additional arguments passed to ``Parameter``.
+    param_type : str
+        Type of the parameter, default is "virtual_gate_linear".
     """
 
     def __init__(
         self,
         gates: list[Parameter],
-        factors: list[float],
-        offsets: list[float],
+        factors: list[float] = None,
+        offsets: list[float] = None,
+        rot_angle_deg: float | None = None,
+        points: list[tuple[float, float]] = None,
         name: str | None = None,
         label: str | None = None,
-        unit: str = "V",
+        param_type: str = "virtual_gate_linear",
         **kwargs,
     ):
         self.gates = gates
+        self.param_type = param_type
+
         self.factors = factors
         self.offsets = offsets
+
+        self.points = points
+        self.rot_angle_deg = rot_angle_deg
+
+        if self.factors is not None and self.offsets is not None:
+            if len(gates) != len(self.factors) or len(gates) != len(self.offsets):
+                raise ValueError(
+                    "The number of gates, factors, and offsets must be the same"
+                )
+
+        if rot_angle_deg is not None:
+            if len(self.gates) != 2:
+                raise ValueError("Rotation is only supported for exactly two gates")
+            theta = np.deg2rad(rot_angle_deg)
+            self.factors = [np.cos(theta), np.sin(theta)]
+            self.offsets = [0, 0]
+
+        if self.points is not None:
+            if len(self.gates) != 2:
+                raise ValueError(
+                    "Point-based virtual gates are only supported for exactly two gates"
+                )
+
+            P1 = np.asarray(self.points[0], dtype=float)
+            P2 = np.asarray(self.points[1], dtype=float)
+
+            direction = P2 - P1
+            distance = np.linalg.norm(direction)
+
+            if distance == 0:
+                raise ValueError("The two points must be different")
+
+            direction /= distance
+
+            self.factors = direction.tolist()
+            self.offsets = P1.tolist()
 
         root = _root_instrument(gates[0])
         if not all(_root_instrument(ch) is root for ch in gates):
@@ -84,17 +128,17 @@ class VirtualGate(Parameter):
             name = f"virtual_gate_{gate_names}"
 
         if label is None:
-            label = "Virtual Gate: "
-            parts = [f"{f}*{g.label}" for f, g in zip(factors, gates)]
-            label += " + ".join(parts)
+            gate_names = " ".join(g.name for g in gates)
+            label = f"Virtual Gate {gate_names}"
+
+        unit = gates[0].unit
 
         super().__init__(
             name=name,
             label=label,
             unit=unit,
-            instrument=gates[0].instrument,
-            set_cmd=None,
-            get_cmd=None,
+            instrument=root,
+            vals=vals.Numbers(),
             **kwargs,
         )
 
@@ -112,12 +156,21 @@ class VirtualGate(Parameter):
             params_to_skip_update=params_to_skip_update,
         )
 
-        snap["type"] = "virtual_gate_linear"
+        snap["param_type"] = self.param_type
         snap["gates"] = {ch.name: ch.full_name for ch in self.gates}
         snap["transformation"] = {
             "factors": [float(f) for f in self.factors],
             "offsets": [float(o) for o in self.offsets],
         }
+
+        parts = [
+            f"{g.label} = {o:.3f} + {f:.3f} * V_virtual"
+            for g, f, o in zip(self.gates, self.factors, self.offsets)
+        ]
+        snap["description"] = "Virtual Gate: [" + ", ".join(parts) + "]"
+
+        snap["rot_angle_deg"] = self.rot_angle_deg
+        snap["points"] = self.points
 
         return snap
 
@@ -129,6 +182,7 @@ class MultiChannelParameter(Parameter):
         name: str = None,
         label: str = None,
         param_type: str = "gates",
+        **kwargs,
     ):
         channels = list(param)
 
@@ -154,6 +208,7 @@ class MultiChannelParameter(Parameter):
             unit=unit,
             instrument=root,
             vals=vals.Numbers(),
+            **kwargs,
         )
 
         self.channels = channels
