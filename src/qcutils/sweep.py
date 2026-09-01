@@ -13,6 +13,9 @@ from qcutils.logger import get_logger
 logger = get_logger(__name__)
 last_save = 0
 
+DISK_PERSIST_ATTEMPTS = 6
+DISK_PERSIST_RETRY_DELAY = 0.2
+
 
 class Sweep:
     def __init__(
@@ -333,23 +336,42 @@ def stepper(
             logger.info("[stepper._persist_memory] Saved dataset to in-memory store")
 
     def _persist_disk():
-        if disk_store is not None:
-            if memory_store is not None:
-                zarr.copy_store(memory_store, disk_store, if_exists="replace")
-                if verbose:
-                    logger.info(
-                        "[stepper._persist_disk] Copied in-memory store to disk store"
-                    )
-            else:
-                dataset.to_zarr(store=disk_store, mode="a")
-                if verbose:
-                    logger.info(
-                        "[stepper._persist_disk] Saved dataset directly to disk store"
-                    )
-        else:
-            dataset.to_zarr(store=data_location, mode="w")
-            if verbose:
-                logger.info(f"[stepper._persist_disk] Saved dataset to {data_location}")
+        for attempt in range(1, DISK_PERSIST_ATTEMPTS + 1):
+            try:
+                if disk_store is not None:
+                    if memory_store is not None:
+                        zarr.copy_store(memory_store, disk_store, if_exists="replace")
+                        if verbose:
+                            logger.info(
+                                "[stepper._persist_disk] Copied in-memory store to disk store"
+                            )
+                    else:
+                        dataset.to_zarr(store=disk_store, mode="a")
+                        if verbose:
+                            logger.info(
+                                "[stepper._persist_disk] Saved dataset directly to disk store"
+                            )
+                else:
+                    dataset.to_zarr(store=data_location, mode="w")
+                    if verbose:
+                        logger.info(
+                            f"[stepper._persist_disk] Saved dataset to {data_location}"
+                        )
+                break
+            except PermissionError as exc:
+                if attempt == DISK_PERSIST_ATTEMPTS:
+                    raise
+
+                delay = DISK_PERSIST_RETRY_DELAY * (2 ** (attempt - 1))
+                logger.warning(
+                    "[stepper._persist_disk] Disk store is temporarily locked "
+                    "(attempt %d/%d); retrying in %.1f s: %s",
+                    attempt,
+                    DISK_PERSIST_ATTEMPTS,
+                    delay,
+                    exc,
+                )
+                sleep(delay)
 
         if nc_snapshot_path:
             try:
@@ -367,6 +389,20 @@ def stepper(
                     nc_snapshot_path,
                     exc,
                 )
+
+    def _checkpoint():
+        """Persist live state without letting a transient file lock skip sweep points."""
+        _persist_memory()
+        try:
+            _persist_disk()
+        except PermissionError as exc:
+            logger.error(
+                "[stepper._checkpoint] Disk checkpoint remains locked after %d "
+                "attempts; continuing the sweep with the complete in-memory "
+                "dataset. A later checkpoint will retry: %s",
+                DISK_PERSIST_ATTEMPTS,
+                exc,
+            )
 
     try:
         if len(sweeps) == 0:
@@ -402,11 +438,9 @@ def stepper(
 
             if last_save == 0 or (time() - last_save > save_interval):
                 last_save = time()
-                _persist_memory()
-                _persist_disk()
+                _checkpoint()
 
-            _persist_memory()
-            _persist_disk()
+            _checkpoint()
             return dataset
 
         sweep = sweeps[len(sweeps) - depth]
@@ -508,13 +542,17 @@ def stepper(
                 if last_save == 0 or (time() - last_save > save_interval):
                     last_save = time()
                     # NOTE: Writing dataset to MemoryStore as well as DiskStore
-                    _persist_memory()
-                    _persist_disk()
-    except Exception as e:
-        logger.exception(e, exc_info=True)
-        _persist_memory()
-        _persist_disk()
+                    _checkpoint()
+    except (Exception, KeyboardInterrupt):
+        # Preserve the latest acquired data, then let the caller handle the interruption/failure.
+        try:
+            _persist_memory()
+        except Exception:
+            logger.exception(
+                "[stepper] Failed to preserve in-memory state while handling "
+                "a measurement error"
+            )
+        raise
 
-    _persist_memory()
-    _persist_disk()
+    _checkpoint()
     return dataset

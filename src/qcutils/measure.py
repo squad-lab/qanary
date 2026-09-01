@@ -514,7 +514,9 @@ class Measurement:
             Exception: If there is an error during finalization, it will be logged but not raised.
 
         """
-        export_dataset = dataset
+        # self.arr is the authoritative, most recent in-memory state during a
+        # run. The disk Zarr checkpoint can lag behind after a transient lock.
+        export_dataset = dataset if dataset is not None else self.arr
 
         if export_dataset is None:
             try:
@@ -801,6 +803,14 @@ class Measurement:
                 buffered_sweep=buffered_sweep,
             )
 
+            completed_points = int(bar.n)
+            expected_points = int(bar.total)
+            if completed_points != expected_points:
+                raise RuntimeError(
+                    "Measurement returned before all sweep points completed: "
+                    f"{completed_points}/{expected_points} points acquired"
+                )
+
             dataset = self._finalize_disk_artifacts(dataset=dataset, verbose=verbose)
             finalized = True
             if dataset is None:
@@ -843,6 +853,7 @@ class Measurement:
             raise
         except Exception as e:
             logger.exception(f"Measurement failed with error: {e}", exc_info=True)
+            raise
         finally:
             if bar is not None:
                 try:
