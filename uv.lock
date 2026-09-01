@@ -1653,7 +1653,7 @@ requires-dist = [
     { name = "websockets", specifier = ">=16.0" },
     { name = "zarr", specifier = "==2.18.4" },
     { name = "zeroconf", specifier = ">=0.147.2" },
-    { name = "zhinst", specifier = "==26.4.1" },
+    { name = "zhinst", specifier = ">=25.1.0" },
     { name = "zhinst-qcodes", specifier = ">=0.6.0" },
 ]
 
