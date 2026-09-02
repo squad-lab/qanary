@@ -7,6 +7,78 @@ from qcutils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _buffered_sweep_progress_info(root_payload: Dict[str, Any]) -> Tuple[int, float]:
+    """
+    Return the point count and estimated duration of a buffered block.
+
+    Buffered sibling branches are driven concurrently, so one block is
+    represented by its longest coordinate path instead of by summing every
+    dependent. Instrument setup and result-fetch overhead are not included in
+    the duration estimate.
+
+    Args:
+        root_payload (Dict[str, Any]): Root dictionary of the buffered sweep
+            tree.
+
+    Returns:
+        Tuple[int, float]: The largest buffered point count and the estimated
+            duration in seconds of the slowest branch.
+
+    Raises:
+        TypeError: If the root, a child, ``sweeps``, or ``nodes`` has an invalid
+            type.
+
+    """
+
+    if not isinstance(root_payload, dict):
+        raise TypeError("Buffered sweep root must be a payload dict.")
+
+    best_points = 1
+    best_duration = 0.0
+
+    def walk(payload: Dict[str, Any], points: int, step_time: float) -> None:
+        """
+        Visit one node and recursively inspect its descendants.
+
+        Args:
+            payload (Dict[str, Any]): Current buffered-tree node.
+            points (int): Point count inherited from the parent path.
+            step_time (float): Point spacing inherited from the parent path.
+
+        Raises:
+            TypeError: If the node, ``sweeps``, or ``nodes`` has an invalid
+                type.
+
+        """
+        nonlocal best_points, best_duration
+
+        if not isinstance(payload, dict):
+            raise TypeError("Each buffered sweep node must be a payload dict.")
+
+        sweeps = payload.get("sweeps", []) or []
+        if not isinstance(sweeps, (list, tuple)):
+            raise TypeError("'sweeps' must be a list or tuple of sweep objects.")
+
+        current_points = points
+        current_step_time = step_time
+        for sweep in sweeps:
+            current_points *= len(sweep.values)
+            current_step_time = float(sweep.delay)
+
+        current_duration = current_points * current_step_time
+        best_points = max(best_points, current_points)
+        best_duration = max(best_duration, current_duration)
+
+        children = payload.get("nodes", []) or []
+        if not isinstance(children, list):
+            raise TypeError("'nodes' must be a list of child payload dicts.")
+        for child in children:
+            walk(child, current_points, current_step_time)
+
+    walk(root_payload, points=1, step_time=0.0)
+    return best_points, best_duration
+
+
 def parse_bufsweep_tree(visitor):
     """
     Walk a buffered sweep tree (new schema) and call `visitor` at each node.
@@ -47,6 +119,7 @@ def parse_bufsweep_tree(visitor):
         - "trigger_type": optional str
         - "toplevel"   : Any
         - "state"      : dict  (branch-local)
+
     """
 
     def _assert_payload(d: Dict[str, Any]) -> None:
@@ -184,6 +257,7 @@ def arm_instruments(
 ):
     """
     Configure instruments and propagate sweep values.
+
     """
 
     structural_keys = {"name", "instrument", "dependent", "sweeps", "nodes"}

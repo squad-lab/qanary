@@ -21,7 +21,11 @@ from tqdm import tqdm
 
 # Local imports
 from qcutils import live_server
-from qcutils.buffered.sweep import abort_instruments, fetch_dependents_tree
+from qcutils.buffered.sweep import (
+    abort_instruments,
+    _buffered_sweep_progress_info,
+    fetch_dependents_tree,
+)
 from qcutils.logger import get_logger
 from qcutils.parameters import ParameterMixin, MultiChannelParameter
 from qcutils.shared import live_db
@@ -759,6 +763,9 @@ class Measurement:
             total_points = 1
             for sweep in sweeps:
                 total_points *= len(sweep.values)
+            if buffered_sweep is not None:
+                buffered_points, _ = _buffered_sweep_progress_info(buffered_sweep)
+                total_points *= buffered_points
 
             logger.info("Registered Parameters:")
             print("\n")
@@ -783,6 +790,7 @@ class Measurement:
                 ncols=10,
                 dynamic_ncols=True,
                 desc="Measurement Progress",
+                unit="point",
             )
 
             dataset = stepper(

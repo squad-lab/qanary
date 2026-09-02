@@ -1,13 +1,17 @@
 import os
-from threading import Thread
-from time import sleep, time
+from threading import Event, Thread
+from time import monotonic, sleep, time
 from typing import Any, Callable, Optional, Sequence
 
 import numpy as np
 import zarr
 from qcodes.parameters import Parameter
 
-from qcutils.buffered.sweep import arm_instruments, fetch_results
+from qcutils.buffered.sweep import (
+    arm_instruments,
+    _buffered_sweep_progress_info,
+    fetch_results,
+)
 from qcutils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -15,6 +19,84 @@ last_save = 0
 
 DISK_PERSIST_ATTEMPTS = 6
 DISK_PERSIST_RETRY_DELAY = 0.2
+
+
+class _BufferedProgress:
+    def __init__(self, bar, points: int, estimated_duration: float) -> None:
+        """
+        Initialize progress estimation for one buffered block.
+
+        Args:
+            bar (Any): Progress bar exposing an ``update`` method.
+            points (int): Number of coordinate points in the buffered block.
+            estimated_duration (float): Estimated duration of the block in
+                seconds.
+
+        Raises:
+            TypeError: If ``points`` or ``estimated_duration`` cannot be
+                converted to their declared numeric types.
+            ValueError: If ``points`` or ``estimated_duration`` contains an
+                invalid numeric value.
+
+        """
+        self.bar = bar
+        self.points = max(1, int(points))
+        self.estimated_duration = max(0.0, float(estimated_duration))
+        self.advanced = 0
+        self._stop_event = Event()
+        self._thread = None
+
+    def start(self) -> None:
+        """
+        Start estimated progress updates in a daemon thread.
+
+        """
+        # Completion of the final point means results were fetched and stored,
+        # so the timer deliberately never advances that point.
+        if self.points <= 1 or self.estimated_duration <= 0:
+            return
+
+        self._thread = Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        """
+        Advance estimated progress without completing the final point.
+
+        """
+        started_at = monotonic()
+        refresh_interval = min(
+            0.1, max(0.01, self.estimated_duration / self.points)
+        )
+
+        while not self._stop_event.wait(refresh_interval):
+            elapsed = monotonic() - started_at
+            target = min(
+                self.points - 1,
+                int(self.points * elapsed / self.estimated_duration),
+            )
+            if target > self.advanced:
+                self.bar.update(target - self.advanced)
+                self.advanced = target
+
+    def stop(self) -> None:
+        """
+        Stop and join the progress-estimation thread if it was started.
+
+        """
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join()
+
+    def complete(self) -> None:
+        """
+        Stop estimation and advance through the final buffered point.
+
+        """
+        self.stop()
+        if self.advanced < self.points:
+            self.bar.update(self.points - self.advanced)
+            self.advanced = self.points
 
 
 class Sweep:
@@ -404,6 +486,45 @@ def stepper(
                 exc,
             )
 
+    def _run_buffered_block(slow_indexers):
+        """
+        Run, fetch, and store one complete hardware-buffered block.
+
+        Args:
+            slow_indexers (dict[str, Any]): Coordinate selections for the
+                surrounding slow sweeps.
+
+        Returns:
+            dict[Any, dict[str, Any]]: A mapping from buffered dependent
+                parameters to their fetched result metadata and arrays.
+
+        """
+        points, estimated_duration = _buffered_sweep_progress_info(buffered_sweep)
+        progress = _BufferedProgress(bar, points, estimated_duration)
+        progress.start()
+
+        try:
+            # Instrument access stays on the caller thread. Only the estimated
+            # tqdm updates happen on _BufferedProgress's background thread.
+            toplevel = arm_instruments(buffered_sweep)
+            toplevel.run_sweep()
+
+            results_state = {}
+            fetch_results(buffered_sweep, state=results_state)
+            buffered_results_tree = results_state.get("results_tree", {})
+
+            # Each dependent DataArray has [slow dims..., buffered dims...].
+            # Selecting only slow dimensions assigns the complete fast block.
+            for dep, entry in buffered_results_tree.items():
+                arr = dataset.data_vars[f"{dep.name}"]
+                arr.loc[slow_indexers] = entry["result"]
+        except BaseException:
+            progress.stop()
+            raise
+
+        progress.complete()
+        return buffered_results_tree
+
     try:
         if len(sweeps) == 0:
             slow_indexers = {}
@@ -422,19 +543,10 @@ def stepper(
                 arr.loc[slow_indexers] = dependent()
 
             if buffered_sweep is not None:
-                toplevel = arm_instruments(buffered_sweep)
-                toplevel.run_sweep()
-
-                results_state = {}
-                fetch_results(buffered_sweep, state=results_state)
-                buffered_results_tree = results_state.get("results_tree", {})
+                buffered_results_tree = _run_buffered_block(slow_indexers)
                 buffered_dependents = set(buffered_results_tree.keys())
-
-            for dep, entry in buffered_results_tree.items():
-                arr = dataset.data_vars[f"{dep.name}"]
-                arr.loc[slow_indexers] = entry["result"]
-
-            bar.update(1)
+            else:
+                bar.update(1)
 
             if last_save == 0 or (time() - last_save > save_interval):
                 last_save = time()
@@ -520,24 +632,10 @@ def stepper(
                 if buffered_sweep is not None:
                     # Re-arm instruments for this buffered tree at every
                     # slow-step: instruments can only be read once after a sweep.
-                    toplevel = arm_instruments(buffered_sweep)
-                    toplevel.run_sweep()
-
-                    # Fetch all buffered results
-                    results_state = {}
-                    fetch_results(buffered_sweep, state=results_state)
-                    buffered_results_tree = results_state.get("results_tree", {})
+                    buffered_results_tree = _run_buffered_block(slow_indexers)
                     buffered_dependents = set(buffered_results_tree.keys())
-
-                # Write buffered results into the dataset.
-                # For each buffered dependent, its DataArray has dimensions
-                # [slow_dims..., fast_dims...].  By indexing only on slow
-                # dims, we assign an entire block over the fast dims.
-                for dep, entry in buffered_results_tree.items():
-                    arr = dataset.data_vars[f"{dep.name}"]
-                    arr.loc[slow_indexers] = entry["result"]
-
-                bar.update(1)
+                else:
+                    bar.update(1)
 
                 if last_save == 0 or (time() - last_save > save_interval):
                     last_save = time()
