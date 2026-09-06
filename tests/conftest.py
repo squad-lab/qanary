@@ -1,5 +1,5 @@
 """
-Shared fixtures for the qcutils test suite.
+Shared fixtures for the qanary test suite.
 
 Nothing here talks to hardware. Where a test needs a real QCoDeS
 ``Parameter`` -- one with a unit, a label and a root instrument -- it gets a
@@ -11,7 +11,7 @@ Process-wide state has to be contained, or tests leak into each other:
 - QCoDeS keeps a process-wide instrument registry keyed by name, so an
   instrument left open makes the next test asking for that name fail with a
   duplicate-name error. ``instrument`` closes everything it created.
-- The live registry defaults to ``~/.qcutils/live_measurements.db``. Tests
+- The live registry defaults to ``~/.qimchi/live_measurements.db``. Tests
   that register a measurement point it at a temporary file instead, so a run
   of the suite never touches the developer's own database.
 
@@ -32,8 +32,8 @@ from qimchi_connect import close_live_measurement
 from qimchi_connect import registry as live_db
 from qimchi_connect import server as live_server
 
-from qcutils import sweep as sweep_module
-from qcutils.measure import Measurement, Station
+from qanary import sweep as sweep_module
+from qanary.measure import Measurement, Station
 
 _NAMES = count()
 
@@ -52,7 +52,7 @@ def instrument():
     created = []
 
     def _make(*gates: str, channels: bool = False):
-        name = f"qcutils_test_{next(_NAMES)}"
+        name = f"qanary_test_{next(_NAMES)}"
         if channels:
             inst = DummyChannelInstrument(name)
         else:
@@ -125,7 +125,7 @@ def measurement(tmp_path, station, live_registry, offline_live_server):
 
     """
     with patch.object(
-        Measurement, "get_installed_packages", return_value="qcutils==0.8.0\n"
+        Measurement, "get_installed_packages", return_value="qanary==0.8.0\n"
     ):
         yield Measurement(
             wafer_id="W1",
@@ -140,15 +140,17 @@ def measurement(tmp_path, station, live_registry, offline_live_server):
 
 
 @pytest.fixture(autouse=True)
-def isolated_qcutils_home(tmp_path, monkeypatch):
+def isolated_qanary_home(tmp_path, monkeypatch):
     """
-    Keep every test out of the real ``~/.qcutils``.
+    Keep every test out of the real ``~/.qanary``.
 
-    QCUtils keeps its temporary live Zarr stores there. Qimchi Connect's
-    discovery registry is isolated separately by the ``live_registry`` fixture.
+    Qanary keeps its temporary live Zarr stores there, and pruning deletes
+    what it finds, so a test must never reach the developer's own. Qimchi
+    Connect's discovery registry is isolated separately by the
+    ``live_registry`` fixture.
 
     """
-    monkeypatch.setenv("QCUTILS_HOME", str(tmp_path / "qcutils-home"))
+    monkeypatch.setenv("QANARY_HOME", str(tmp_path / "qanary-home"))
 
 
 @pytest.fixture

@@ -1,5 +1,5 @@
 """
-Tests for ``qcutils.logger``.
+Tests for ``qanary.logger``.
 
 Logging is configured as a side effect of importing the package, which means
 it is configured exactly once and every later ``get_logger`` call has to be
@@ -15,8 +15,8 @@ import sys
 
 import pytest
 
-from qcutils import logger as logger_module
-from qcutils.logger import get_logger
+from qanary import logger as logger_module
+from qanary.logger import get_logger
 
 
 @pytest.fixture
@@ -29,13 +29,13 @@ def unconfigured():
 
     """
     root_logger = logging.getLogger()
-    qcutils_logger = logging.getLogger("qcutils")
+    qanary_logger = logging.getLogger("qanary")
     websockets_logger = logging.getLogger("websockets")
     original = {
         "configured": logger_module._LOGGING_CONFIGURED,
         "root_handlers": root_logger.handlers[:],
         "root_level": root_logger.level,
-        "qcutils_level": qcutils_logger.level,
+        "qanary_level": qanary_logger.level,
         "websockets_level": websockets_logger.level,
     }
     logger_module._LOGGING_CONFIGURED = False
@@ -50,7 +50,7 @@ def unconfigured():
             if type(handler) is logging.StreamHandler:
                 handler.setStream(sys.__stdout__)
         root_logger.setLevel(original["root_level"])
-        qcutils_logger.setLevel(original["qcutils_level"])
+        qanary_logger.setLevel(original["qanary_level"])
         websockets_logger.setLevel(original["websockets_level"])
         logger_module._LOGGING_CONFIGURED = original["configured"]
 
@@ -61,15 +61,15 @@ def test_import_configures_logging_once():
 
 
 def test_returns_the_logger_for_the_requested_module():
-    assert get_logger("qcutils.measure").name == "qcutils.measure"
+    assert get_logger("qanary.measure").name == "qanary.measure"
 
 
 def test_the_same_name_gives_the_same_logger():
-    assert get_logger("qcutils.sweep") is get_logger("qcutils.sweep")
+    assert get_logger("qanary.sweep") is get_logger("qanary.sweep")
 
 
 def test_the_first_call_configures_logging(unconfigured):
-    get_logger("qcutils.something")
+    get_logger("qanary.something")
 
     assert logger_module._LOGGING_CONFIGURED is True
 
@@ -81,14 +81,14 @@ def test_reconfiguring_only_adjusts_the_level():
     added themselves.
 
     """
-    qcutils_logger = logging.getLogger("qcutils")
-    original_level = qcutils_logger.level
+    qanary_logger = logging.getLogger("qanary")
+    original_level = qanary_logger.level
     try:
         logger_module._setup_logging(level=logging.DEBUG)
 
-        assert qcutils_logger.level == logging.DEBUG
+        assert qanary_logger.level == logging.DEBUG
     finally:
-        qcutils_logger.setLevel(original_level)
+        qanary_logger.setLevel(original_level)
 
 
 def test_the_websockets_logger_is_quietened(unconfigured):
@@ -104,16 +104,16 @@ def test_the_websockets_logger_is_quietened(unconfigured):
 
 def test_the_detailed_format_carries_a_timestamp_and_module(unconfigured, capsys):
     logger_module._setup_logging(use_detailed_format=True)
-    get_logger("qcutils.formatted").warning("a message")
+    get_logger("qanary.formatted").warning("a message")
 
     printed = capsys.readouterr().out
-    assert "qcutils.formatted" in printed
+    assert "qanary.formatted" in printed
     assert "WARNING" in printed
 
 
 def test_a_custom_format_string_is_used(unconfigured, capsys):
     logger_module._setup_logging(format_string="[%(levelname)s] %(message)s")
-    get_logger("qcutils.custom").warning("a message")
+    get_logger("qanary.custom").warning("a message")
 
     assert "[WARNING] a message" in capsys.readouterr().out
 

@@ -1,23 +1,23 @@
-# QCUtils
+# Qanary
 
-[![pipeline](https://gitlab.com/squad-lab/qcutils/badges/main/pipeline.svg?ignore_skipped=true&key_text=pipeline&key_width=60)](https://gitlab.com/squad-lab/qcutils/-/pipelines?ref=main)
-[![tests](https://gitlab.com/squad-lab/qcutils/badges/main/pipeline.svg?job=pytest%3A%20%5B3.13%5D&ignore_skipped=true&key_text=tests&key_width=40)](https://gitlab.com/squad-lab/qcutils/-/pipelines?ref=main)
-[![coverage](https://gitlab.com/squad-lab/qcutils/badges/main/coverage.svg?key_text=coverage&key_width=64)](https://gitlab.com/squad-lab/qcutils/-/jobs)
-[![latest release](https://gitlab.com/squad-lab/qcutils/-/badges/release.svg?key_text=release&key_width=54)](https://gitlab.com/squad-lab/qcutils/-/releases)
-[![PyPI version](https://img.shields.io/pypi/v/qcutils.svg)](https://pypi.org/project/qcutils/)
+[![pipeline](https://gitlab.com/squad-lab/qanary/badges/main/pipeline.svg?ignore_skipped=true&key_text=pipeline&key_width=60)](https://gitlab.com/squad-lab/qanary/-/pipelines?ref=main)
+[![tests](https://gitlab.com/squad-lab/qanary/badges/main/pipeline.svg?job=pytest%3A%20%5B3.13%5D&ignore_skipped=true&key_text=tests&key_width=40)](https://gitlab.com/squad-lab/qanary/-/pipelines?ref=main)
+[![coverage](https://gitlab.com/squad-lab/qanary/badges/main/coverage.svg?key_text=coverage&key_width=64)](https://gitlab.com/squad-lab/qanary/-/jobs)
+[![latest release](https://gitlab.com/squad-lab/qanary/-/badges/release.svg?key_text=release&key_width=54)](https://gitlab.com/squad-lab/qanary/-/releases)
+[![PyPI version](https://img.shields.io/pypi/v/qanary.svg)](https://pypi.org/project/qanary/)
 
-QCUtils simplifies measurement workflows and replaces QCoDeS for handling measurements.
+Qanary simplifies measurement workflows and replaces QCoDeS for handling measurements.
 
 ## Installation
 
-QCUtils requires Python 3.13. Install the latest release from PyPI:
+Qanary requires Python 3.13. Install the latest release from PyPI:
 
 ```console
-uv add qcutils
+uv add qanary
 ```
 
 ```console
-pip install qcutils
+pip install qanary
 ```
 
 ## Preparing a measurement project
@@ -33,14 +33,14 @@ uv init measurement_name
 cd measurement_name
 ```
 
-Add QCUtils to the project with:
+Add Qanary to the project with:
 
 ```sh
-uv add qcutils
+uv add qanary
 ```
 
 > [!note] NOTE  
-> QCUtils installs its QCoDeS, Zurich Instruments, live-visualization, and driver dependencies, so there is no need to add them separately.
+> Qanary installs its QCoDeS, Zurich Instruments, live-visualization, and driver dependencies, so there is no need to add them separately.
 
 ### Running Commands
 
@@ -62,7 +62,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "qcutils",
+    "qanary",
 ]
 ```
 
@@ -76,30 +76,30 @@ This will automatically fetch and install the required packages.
 
 ## Measurement
 
-For complete measurement scripts, see the [examples](https://gitlab.com/squad-lab/qcutils/-/tree/main/examples) directory.
+For complete measurement scripts, see the [examples](https://gitlab.com/squad-lab/qanary/-/tree/main/examples) directory.
 
 ### Live & Disk Format
 
-`qcutils` uses a split data path:
+`qanary` uses a split data path:
 
 - Live visualization: in-memory Zarr snapshots published through
   [`qimchi-connect`](https://gitlab.com/squad-lab/qimchi-connect), with a
   temporary disk checkpoint for recovery
 - Completed measurement: a netCDF (`.nc`) file in the configured data directory
 
-Qimchi discovers a QCUtils measurement automatically while it runs. After a
-successful final export, QCUtils removes the temporary Zarr checkpoint and the
+Qimchi discovers a Qanary measurement automatically while it runs. After a
+successful final export, Qanary removes the temporary Zarr checkpoint and the
 netCDF file remains as the measurement record.
 
 ## Development
 
-We welcome contributions to `qcutils`! To get started with development, clone the repository:
+We welcome contributions to `qanary`! To get started with development, clone the repository:
 ```sh
-git clone https://gitlab.com/squad-lab/qcutils
+git clone https://gitlab.com/squad-lab/qanary
 ```
 Navigate into the cloned directory and install the package in development mode:
 ```sh
-cd qcutils
+cd qanary
 uv sync --extra dev
 uv run pre-commit install
 ```

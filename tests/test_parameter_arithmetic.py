@@ -1,7 +1,7 @@
 """
-Tests for the Parameter arithmetic operators installed by ``qcutils``.
+Tests for the Parameter arithmetic operators installed by ``qanary``.
 
-Importing ``qcutils`` patches ``__add__``, ``__sub__``, ``__mul__``,
+Importing ``qanary`` patches ``__add__``, ``__sub__``, ``__mul__``,
 ``__truediv__`` and ``__pow__`` onto QCoDeS' ``Parameter``, so measurement
 scripts can write ``dmm.v1 - dmm.v2`` and pass the result straight to a
 measurement as a dependent.
@@ -16,8 +16,8 @@ the multiplicative ones combine them instead.
 import pytest
 from qcodes.parameters import Parameter
 
-# Importing qcutils is what installs the operators; the import is the fixture.
-import qcutils  # noqa: F401
+# Importing qanary is what installs the operators; the import is the fixture.
+import qanary  # noqa: F401
 
 
 def test_addition_and_subtraction_combine_values(gates):
@@ -109,4 +109,4 @@ def test_division_by_a_zeroed_parameter_raises(gates):
 def test_operators_are_installed_on_the_qcodes_class():
     """The patch is global: any Parameter gets the operators, not just gates."""
     for name in ("__add__", "__sub__", "__mul__", "__truediv__", "__pow__"):
-        assert getattr(Parameter, name).__module__ == "qcutils"
+        assert getattr(Parameter, name).__module__ == "qanary"

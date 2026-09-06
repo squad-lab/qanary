@@ -1,29 +1,41 @@
 # Virtual gates
 
-A `VirtualGate` is a linear combination of real gates. Setting it distributes
-the value across its constituents by a coefficient matrix, which is how you
-compensate cross-capacitance and sweep along an axis that means something
-physically rather than one that happens to match the wiring.
+A `VirtualGate` maps one sweep coordinate onto several physical gates. Use it
+to follow a meaningful direction through gate space—for example, to compensate
+cross-capacitance—without calculating every physical voltage in the
+measurement script.
 
-Like the multi-channel example, this one runs without hardware.
+The example uses `ShellInstrument` channels and therefore runs without
+hardware.
+
+## Define the transformation
+
+For a virtual value $v$, each physical gate receives
+$\text{factor} \times v + \text{offset}$:
 
 ```python
 from qcdrivers.squad import ShellInstrument
-from qcutils.parameters import VirtualGate
+from qanary.parameters import VirtualGate
 
 vg = VirtualGate(
+    gates=[dummy.ch1, dummy.ch2],
+    factors=[1.0, -0.5],
+    offsets=[0.0, 0.0],
     name="virtual_gate",
     label="Virtual gate",
-    unit="V",
-    parameters=[dummy.ch1, dummy.ch2],
-    coefficients=[1.0, -0.5],
 )
 
-vg(1.0)   # ch1 -> 1.0 V, ch2 -> -0.5 V
+vg(1.0)  # ch1 -> 1.0 V, ch2 -> -0.5 V
 ```
 
-Sweeping the virtual gate sweeps the combination, and the dataset records the
-virtual axis. The example plots the resulting gate trajectories with matplotlib
-so the effect of the coefficients is visible.
+All gates must share one root instrument. Instead of supplying `factors` and
+`offsets` directly, a two-gate virtual axis can be defined by either
+`rot_angle_deg` or two `points`. The first point becomes the offset and the
+direction towards the second point defines the factors.
 
-Full example: [`virtual_gate_parameter_example.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/virtual_gate_parameter_example.py)
+Sweep `vg` as you would any QCoDeS parameter. Qanary records the virtual
+coordinate in the dataset, while the parameter snapshot preserves the complete
+physical transformation. The example plots several transformations so their
+directions in gate space are easy to compare.
+
+Full example: [`virtual_gate_parameter_example.py`](https://gitlab.com/squad-lab/qanary/-/blob/main/examples/virtual_gate_parameter_example.py)

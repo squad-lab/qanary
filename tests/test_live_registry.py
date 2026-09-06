@@ -1,7 +1,7 @@
 """
-Tests for qcutils integration with the live registry.
+Tests for qanary integration with the live registry.
 
-QCUtils publishes a measurement by handing Qimchi Connect a snapshot callback
+Qanary publishes a measurement by handing Qimchi Connect a snapshot callback
 that reads its in-memory Zarr store. These tests verify that a Qimchi client
 receives the published data and that the discovery row follows the measurement
 through its lifecycle.
@@ -18,7 +18,7 @@ from qimchi_connect import registry as live_db
 from qimchi_connect import server as live_server
 from qimchi_connect.client import open_live_measurement_sync
 
-from qcutils import measure
+from qanary import measure
 
 
 class LivePublicationTests(TestCase):
@@ -68,7 +68,7 @@ class LivePublicationTests(TestCase):
         assert first["signal"].size == 1
         assert second["signal"].size == 3
 
-    def test_publication_names_qcutils_as_the_source(self):
+    def test_publication_names_qanary_as_the_source(self):
         store = zarr.MemoryStore()
         xr.Dataset({"signal": ("x", [1.0])}, coords={"x": [0]}).to_zarr(
             store=store, mode="w"
@@ -78,7 +78,7 @@ class LivePublicationTests(TestCase):
 
         restored = open_live_measurement_sync("described", f"ws://localhost:{port}")
         assert restored.encoding["qimchi_connect_source"] == {
-            "source_package": "qcutils",
+            "source_package": "qanary",
             "source_format": "zarr",
         }
 

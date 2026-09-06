@@ -1,18 +1,18 @@
 ---
-title: QCutils
+title: Qanary
 ---
 # Measurement Utilities for QCoDeS
 
-**QCutils** simplifies measurement workflows and replaces QCoDeS's own
+**Qanary** simplifies measurement workflows and replaces QCoDeS's own
 measurement layer. You declare the parameters to sweep and the quantities to
-record; QCutils walks the sweep, stores the result as an
+record; Qanary walks the sweep, stores the result as an
 [`xarray.Dataset`](https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html),
 and publishes it for live visualization and analysis to [Qimchi](https://gitlab.com/squad-lab/qimchi)
 while it runs.
 
-# Why QCutils?
+# Why Qanary?
 
-Measurement code should describe the *experiment*, not the bookkeeping. QCutils
+Measurement code should describe the *experiment*, not the bookkeeping. Qanary
 takes over dataset creation, incremental persistence, live publication and
 metadata capture, so a sweep becomes a handful of declarative lines rather than a
 nested loop with save logic threaded through it.
@@ -23,7 +23,7 @@ nested loop with save logic threaded through it.
   a pre-allocated dataset.
 - **Buffered acquisition**: hand a block of points to the instrument and read it
   back in one go, instead of a round trip per point. Much faster, where supported.
-- **Live visualization**: QCUtils publishes each measurement to Qimchi as it
+- **Live visualization**: Qanary publishes each measurement to Qimchi as it
   runs through [`qimchi-connect`](https://gitlab.com/squad-lab/qimchi-connect).
   Other measurement libraries and custom acquisition scripts can use its
   `live_measurement` context manager to publish their own live data.
@@ -34,7 +34,7 @@ nested loop with save logic threaded through it.
 
 # Get Started
 
-QCutils is a Python package managed with [uv](https://docs.astral.sh/uv/). See
+Qanary is a Python package managed with [uv](https://docs.astral.sh/uv/). See
 [Installation](installation.md) to set up a measurement project, then
 [Tutorials](tutorials/tutorials_index.md) for a first sweep.
 

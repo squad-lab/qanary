@@ -4,13 +4,13 @@ Buffered
 Instrument-internal fast sweeps, where the hardware acquires a block of points
 without a round trip per point.
 
-QCUtils does the orchestration -- parsing the node tree, arming the
+Qanary does the orchestration -- parsing the node tree, arming the
 instruments, fetching results and reporting progress. The instrument-specific
 nodes themselves live in `QCDrivers <https://gitlab.com/squad-lab/qcdrivers>`_
 under ``qcdrivers.buffered``, grouped by manufacturer.
 
-``qcutils.buffered.sweep`` exports no public names: every helper in it is
-internal and underscore-prefixed, driven by :func:`qcutils.measure.run` rather
+``qanary.buffered.sweep`` exports no public names: every helper in it is
+internal and underscore-prefixed, driven by :func:`qanary.measure.run` rather
 than called directly. What follows is the contract between the two packages,
 which is what a measurement script and a driver author both need.
 
@@ -18,7 +18,7 @@ The sweep tree
 --------------
 
 A buffered measurement is described by a nested dictionary handed to
-:func:`qcutils.measure.run`. Each level names one instrument node, the sweeps
+:func:`qanary.measure.run`. Each level names one instrument node, the sweeps
 it drives, and the child nodes triggered beneath it:
 
 .. code-block:: python
@@ -39,14 +39,14 @@ it drives, and the child nodes triggered beneath it:
 
     measure.run([buffered_sweep], dependents=[], **run_dict)
 
-The root node sweeps; leaf nodes acquire. QCUtils walks the tree to size the
+The root node sweeps; leaf nodes acquire. Qanary walks the tree to size the
 dataset, arms every instrument, runs the sweep, then reshapes what comes back
 into the dataset's coordinates.
 
 The node contract
 -----------------
 
-Any class used as an ``"instrument"`` must provide these, which is all QCUtils
+Any class used as an ``"instrument"`` must provide these, which is all Qanary
 calls on it:
 
 .. list-table::
@@ -69,8 +69,8 @@ calls on it:
       - Whether this node is the root of the tree.
 
 Nodes are typed against a structural ``SweepLike`` protocol rather than
-importing :class:`qcutils.sweep.Sweep`, so QCDrivers does not depend on
-QCUtils. :class:`~qcutils.sweep.CircularSweep` and
-:class:`~qcutils.sweep.SegmentedSweep` satisfy it too.
+importing :class:`qanary.sweep.Sweep`, so QCDrivers does not depend on
+Qanary. :class:`~qanary.sweep.CircularSweep` and
+:class:`~qanary.sweep.SegmentedSweep` satisfy it too.
 
 See :doc:`../../tutorials/tutorials_index` for worked examples.

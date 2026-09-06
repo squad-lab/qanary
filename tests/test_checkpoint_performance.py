@@ -32,8 +32,8 @@ import pytest
 import xarray as xr
 import zarr
 
-from qcutils import sweep as sweep_module
-from qcutils.sweep import (
+from qanary import sweep as sweep_module
+from qanary.sweep import (
     _copy_changed_keys,
     _memory_region,
     _stepper,

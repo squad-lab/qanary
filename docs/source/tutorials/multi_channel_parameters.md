@@ -1,30 +1,33 @@
-# Ganging channels together
+# Control several channels as one
 
-`MultiChannelParameter` drives several QCoDeS parameters as one. Setting it
-writes every channel; getting it reads them back as a list. Use it when a gate
-is physically several DAC channels, or when a set of channels must always move
-together.
+`MultiChannelParameter` presents several QCoDeS parameters as one control. A
+set operation writes the same value to every channel, which is useful when a
+gate spans several outputs or a group of channels must always move together.
 
-Nothing here touches hardware -- the example builds its channels on
-`ShellInstrument`, so it runs as-is.
+The complete example uses `ShellInstrument`, so you can run it without
+hardware.
+
+## Create the combined parameter
 
 ```python
 from qcdrivers.squad import ShellInstrument
-from qcutils.parameters import MultiChannelParameter
+from qanary.parameters import MultiChannelParameter
 
 multi_param = MultiChannelParameter(
+    param=[dummy.ch1, dummy.ch2],
     name="multi",
     label="Multi channel",
-    unit="V",
-    parameters=[dummy.ch1, dummy.ch2, dummy2.ch1],
 )
 
-multi_param(0.5)     # every channel goes to 0.5 V
-multi_param()        # -> [0.5, 0.5, 0.5]
+multi_param(0.5)  # both channels are set to 0.5 V
 ```
 
-The parameter carries its own label and unit and produces a QCoDeS snapshot, so
-it can go straight into a {class}`~qcutils.measure.Station` and be swept like
-any other parameter.
+All channels must belong to the same root instrument. The combined parameter
+inherits their unit and can be added to a {class}`~qanary.measure.Station` or
+used in a sweep like any other QCoDeS parameter.
 
-Full example: [`multi_channel_parameter_example.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/multi_channel_parameter_example.py)
+Reading `multi_param()` returns the shared value when all channels agree. It
+returns `None` when they differ, making an inconsistent channel group easy to
+detect. Its snapshot records the underlying channel names, labels, and units.
+
+Full example: [`multi_channel_parameter_example.py`](https://gitlab.com/squad-lab/qanary/-/blob/main/examples/multi_channel_parameter_example.py)

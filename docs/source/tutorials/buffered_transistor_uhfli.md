@@ -1,22 +1,38 @@
-# Transistor curves with the UHFLI
+# Tune a transistor sweep with a UHFLI
 
-A worked single-gate measurement: sweep one DAC channel across a transistor's
-gate and record the lock-in response. It is the same tree as
-{doc}`buffered_basel_uhfli`, narrowed to one gate and tuned for timing.
+This example sweeps a transistor gate with the Basel DAC and acquires amplitude
+and phase from two UHFLI demodulators. It implements the same measurement in
+stepped and buffered forms, making the stepped result a useful reference while
+the hardware timing is tuned.
 
-The part worth copying is the sample-rate setup. The lock-in's demodulator rate
-has to keep up with the sweep, so the example derives both from the per-point
-delay:
+## Configure every demodulator
+
+Each selected demodulator must sample fast enough for the shortest DAC point
+delay. The example initializes both rates and the excitation frequency from
+that delay:
 
 ```python
 min_delay = 0.03e-3
 
-lockin.frequency(2 * 1 / min_delay)
-sample_rate(2 * 1 / min_delay)
+for demod in [0, 1]:
+    sample_rate(2 / min_delay, demod_number=demod)
+
+lockin.frequency1(2 / min_delay)
 ```
 
-Undersampling here does not fail loudly -- it quietly smears the curve -- so it
-is worth setting deliberately rather than inheriting whatever the instrument was
-last left at.
+These are initial values. Verify the acquired point count and compare the curve
+with a stepped run before increasing the sweep speed.
 
-Full example: [`buffered_basel_transistor_test_uhfli.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_basel_transistor_test_uhfli.py)
+## Tune the buffered run
+
+The buffered function makes three timing controls explicit:
+
+- `trigger_delay` shifts acquisition relative to the DAC update.
+- `tc_factor` allows for demodulator settling.
+- `grid_mode="linear"` resamples the acquired values onto the sweep grid.
+
+The example scans several trigger delays and time-constant factors. Use a small,
+safe gate range for that calibration, then retain the settings that reproduce
+the stepped reference without missing samples.
+
+Full example: [`buffered_basel_transistor_test_uhfli.py`](https://gitlab.com/squad-lab/qanary/-/blob/main/examples/buffered_basel_transistor_test_uhfli.py)

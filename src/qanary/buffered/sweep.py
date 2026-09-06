@@ -7,9 +7,9 @@ from functools import wraps
 from inspect import signature
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from qcutils.logger import get_logger
+from qanary.logger import get_logger
 
-# Buffered orchestration is internal: qcutils.sweep drives it. Nothing here
+# Buffered orchestration is internal: qanary.sweep drives it. Nothing here
 # is part of the measurement-script API.
 __all__: list[str] = []
 

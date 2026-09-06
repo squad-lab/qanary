@@ -1,14 +1,14 @@
 # Development
 
-This page defines the conventions for contributing Python code to QCUtils. The
-rules below apply to production code in `src/qcutils` and should be followed in
+This page defines the conventions for contributing Python code to Qanary. The
+rules below apply to production code in `src/qanary` and should be followed in
 new code and when modifying existing code.
 
 ## Getting set up
 
 ```bash
-git clone https://gitlab.com/squad-lab/qcutils.git
-cd qcutils
+git clone https://gitlab.com/squad-lab/qanary.git
+cd qanary
 uv sync --extra dev
 uv run pre-commit install    # once per clone
 ```
@@ -32,12 +32,12 @@ rules under `ruff check` -- `ruff format` does not sort imports.
 
 Each public implementation module declares `__all__`. Anything not listed there
 is internal and is prefixed with an underscore, including across module
-boundaries: `qcutils.sweep` imports `_arm_instruments`, `_fetch_results`, and
-`_buffered_sweep_progress_info` from `qcutils.buffered.sweep`. They stay private
+boundaries: `qanary.sweep` imports `_arm_instruments`, `_fetch_results`, and
+`_buffered_sweep_progress_info` from `qanary.buffered.sweep`. They stay private
 despite the cross-module import because none of them is meant for measurement
 scripts. Package `__init__.py` files are the exception: the top-level package
-installs QCUtils's arithmetic operators on QCoDeS parameters, while
-`qcutils.buffered` only marks the subpackage.
+installs Qanary's arithmetic operators on QCoDeS parameters, while
+`qanary.buffered` only marks the subpackage.
 
 When adding a callable, decide which side of that line it falls on. If it is
 part of the measurement-script API, add it to `__all__`; otherwise prefix it.
@@ -162,7 +162,7 @@ a docstring, retain the triple-quote layout described above.
 
 ## Sphinx integration
 
-QCUtils uses Google-style docstrings so Sphinx renders the sections through
+Qanary uses Google-style docstrings so Sphinx renders the sections through
 Napoleon. This is already configured in `docs/source/conf.py`, which enables
 `sphinx.ext.autodoc` and `sphinx.ext.napoleon` with `napoleon_google_docstring =
 True` (and NumPy-style docstrings switched off).

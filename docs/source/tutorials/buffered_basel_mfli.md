@@ -1,7 +1,10 @@
-# Basel DAC with an MFLI lock-in
+# Acquire a Basel DAC sweep with an MFLI
 
-The DAC sweeps and triggers; the lock-in acquires. This is the shape most
-buffered measurements take -- a sweeping root node with acquiring children.
+In this measurement, the Basel DAC generates the sweep and its synchronization
+output triggers an MFLI. The sweep tree mirrors that signal flow: the DAC is the
+root and the lock-in is its acquiring child.
+
+## Build the sweep tree
 
 ```python
 from qcdrivers.buffered.basel import NodeBaselDAC
@@ -25,10 +28,19 @@ buffered_sweep = {
 measure.run([buffered_sweep], dependents=[], **run_dict)
 ```
 
-`"dependent"` lists what the lock-in records -- here R and phase.
-`"input_trigger"` names the physical trigger line the DAC drives, and
-`grid_mode="exact"` asks for one sample per setpoint rather than a resampled
-grid. The example covers both a one-dimensional sweep and a two-dimensional one
-over two gates.
+The child node settings describe the acquisition:
 
-Full example: [`buffered_basel_with_mfli.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_basel_with_mfli.py)
+- `dependent` lists the measured parameters, here amplitude and phase.
+- `input_trigger` selects the MFLI trigger input connected to the DAC board.
+- `grid_mode="exact"` requests one acquired sample for every sweep point.
+- `trigger_delay` compensates the delay between the DAC update and trigger.
+
+Set the demodulator sample rate high enough for the requested point delay, and
+close any LabOne DAQ module before starting the run. A stale DAQ session can
+prevent Qanary from fetching the new acquisition.
+
+For a two-dimensional scan, both sweeps must use the same point delay. Put the
+inner sweep last in `"sweeps"` and select the trigger input driven by that
+inner-axis DAC board.
+
+Full example: [`buffered_basel_with_mfli.py`](https://gitlab.com/squad-lab/qanary/-/blob/main/examples/buffered_basel_with_mfli.py)

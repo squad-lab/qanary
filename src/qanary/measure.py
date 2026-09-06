@@ -17,7 +17,7 @@ import zarr
 from checksumdir import dirhash
 from qcodes.parameters import Parameter
 from qimchi_connect import (
-    QCUtilsSnapshotProvider,
+    QanarySnapshotProvider,
     close_live_measurement,
     get_live_measurements,
     register_live_measurement,
@@ -26,15 +26,15 @@ from qimchi_connect import (
 from tqdm import tqdm
 
 # Local imports
-from qcutils.buffered.sweep import (
+from qanary.buffered.sweep import (
     _abort_instruments,
     _buffered_sweep_progress_info,
     _fetch_dependents_tree,
 )
-from qcutils.dataset import convert as _convert_live_store
-from qcutils.logger import get_logger
-from qcutils.parameters import MultiChannelParameter, ParameterMixin
-from qcutils.sweep import (
+from qanary.dataset import convert as _convert_live_store
+from qanary.logger import get_logger
+from qanary.parameters import MultiChannelParameter, ParameterMixin
+from qanary.sweep import (
     CircularSweep,
     Sweep,
     _stepper,
@@ -61,14 +61,14 @@ def _live_store_root() -> Path:
     fallback for live consumers. It is removed after a successful netCDF
     export.
 
-    ``QCUTILS_HOME`` overrides the default ``~/.qcutils`` application directory.
+    ``QANARY_HOME`` overrides the default ``~/.qanary`` application directory.
 
     Returns:
         Path: Directory for live Zarr stores.
 
     """
-    home = os.environ.get("QCUTILS_HOME")
-    directory = (Path(home) if home else Path.home() / ".qcutils") / "live"
+    home = os.environ.get("QANARY_HOME")
+    directory = (Path(home) if home else Path.home() / ".qanary") / "live"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
@@ -137,7 +137,7 @@ def _prune_orphaned_live_stores(minimum_age_seconds: float = 3600.0) -> None:
 
     An old store whose measurement is absent from the live registry is treated
     as abandoned, usually because its process ended before finalisation. The
-    store may contain the only copy of the acquired data, so QCUtils first tries
+    store may contain the only copy of the acquired data, so Qanary first tries
     to recover it to its intended netCDF file. If conversion fails after the
     store has been moved beside that target, the staged Zarr data is preserved
     for manual recovery. An unrecoverable scratch store is otherwise removed.
@@ -201,7 +201,7 @@ def _register_memory_store(
     try:
         registration = register_live_measurement(
             measurement_id,
-            QCUtilsSnapshotProvider(store),
+            QanarySnapshotProvider(store),
             disk_path=disk_path,
             port=_find_available_port(8765),
             retention_days=7,
@@ -322,8 +322,8 @@ class Station:
         Add a named parameter to the station.
 
         A sequence is represented by a
-        :class:`~qcutils.parameters.MultiChannelParameter`; a single QCoDeS
-        parameter is aliased with :class:`~qcutils.parameters.ParameterMixin`.
+        :class:`~qanary.parameters.MultiChannelParameter`; a single QCoDeS
+        parameter is aliased with :class:`~qanary.parameters.ParameterMixin`.
 
         Args:
             name (str): Name used in measurement metadata and datasets.
@@ -375,7 +375,7 @@ class Station:
 
 class Measurement:
     """
-    Configure, acquire, publish, and persist one QCUtils measurement.
+    Configure, acquire, publish, and persist one Qanary measurement.
 
     """
 
@@ -417,7 +417,8 @@ class Measurement:
             Completed data is written below
             ``data_location/wafer_id/device_type/sample_name/experiment_name``.
             Live recovery checkpoints are temporary and stored under the
-            QCUtils application directory.
+            Qanary application directory (``QANARY_HOME``, ``~/.qanary`` by
+            default).
 
         """
         self.wafer_id = wafer_id
@@ -652,7 +653,7 @@ class Measurement:
 
         # Imported here, not at module scope: GitPython refuses to
         # initialise without a git executable on PATH, which would make git a
-        # hard requirement of `import qcutils.measure` for every user.
+        # hard requirement of `import qanary.measure` for every user.
         from git import Repo
 
         repo = Repo(str(repo_path))
@@ -752,7 +753,7 @@ class Measurement:
             logger.error(
                 f"Measurement {self.id} failed its netCDF export, and the live "
                 f"store kept at {rescued} could not be converted either: {exc}. "
-                "Convert it with `qcutils.dataset.convert` once the cause is "
+                "Convert it with `qanary.dataset.convert` once the cause is "
                 "fixed. It is very likely incomplete."
             )
             return False

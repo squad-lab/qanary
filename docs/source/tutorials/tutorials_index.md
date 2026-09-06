@@ -1,12 +1,14 @@
 # Tutorials
 
-Each page walks through one of the [shipped
-examples](https://gitlab.com/squad-lab/qcutils/-/tree/main/examples), explains
-what it demonstrates, and links to the full script.
+These tutorials introduce Qanary through the [example
+scripts](https://gitlab.com/squad-lab/qanary/-/tree/main/examples). Each page
+focuses on the part of an example that is useful in a real measurement: how to
+model the sweep, arrange buffered instruments, and choose the relevant timing
+and trigger settings.
 
-The two parameter tutorials run without hardware. The buffered ones describe
-real instruments, so read them for the tree shape and the timing notes rather
-than expecting to execute them as-is.
+The parameter tutorials run without hardware. The buffered tutorials use lab
+instruments and are intended as starting points; update addresses, channels,
+wiring, limits, and data paths before running them.
 
 ## Parameters
 
@@ -19,9 +21,12 @@ virtual_gates
 
 ## Buffered measurements
 
-Instrument-internal sweeps, where the hardware acquires a block of points
-without a round trip per point. See {doc}`../api/buffered/buffered_index` for
-the sweep-tree contract these all build on.
+Buffered measurements let the instruments generate and acquire a complete
+block of points without a Python round trip at every setpoint. Start with the
+{doc}`buffered_basel_dac` tutorial for a single node, then add an acquiring
+instrument with {doc}`buffered_basel_mfli` or {doc}`buffered_basel_uhfli`.
+
+See {doc}`../api/buffered/buffered_index` for the complete sweep-tree contract.
 
 ```{toctree}
 :maxdepth: 1

@@ -19,7 +19,7 @@ import pytest
 import xarray as xr
 import zarr
 
-from qcutils.sweep import (
+from qanary.sweep import (
     _copy_changed_keys,
     _store_cache_key,
     reset_disk_persist_cache,

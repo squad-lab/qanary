@@ -1,28 +1,57 @@
-# Time traces
+# Record buffered time traces
 
-To record against time rather than a swept parameter, sweep a clock. `NodeDelay`
-wraps a `Delay` instrument and acts as the root node, holding the acquisition
-window open while the lock-ins sample.
+A time trace has no physical sweep generator, but it still needs a root node to
+define the acquisition window. Qanary represents that window as a sweep over a
+clock parameter. `NodeDelay` wraps the clock's `Delay` instrument and triggers
+the lock-in acquisition beneath it.
+
+## Match the sweep to the sample rate
+
+Choose a target duration and number of samples, configure the lock-in, and read
+back its actual sample rate. Derive the point delay from that returned value;
+the instrument may quantize the requested rate.
+
+```python
+target_sample_rate = n_samples / target_duration
+lockin_DC.sample_rate(target_sample_rate)
+
+actual_sample_rate = lockin_DC.sample_rate()
+point_delay = 1 / actual_sample_rate
+```
+
+## Build the time-trace tree
 
 ```python
 from qcdrivers.buffered.squad import NodeDelay
-from qcdrivers.buffered.zurich import NodeMFLI, NodeUHFLI
+from qcdrivers.buffered.zurich import NodeMFLI
 
-time_sweep = Sweep(clock.time, 0, target_duration, num=n_samples)
+time_sweep = Sweep(
+    clock.time,
+    point_delay,
+    n_samples * point_delay,
+    num=n_samples,
+    start_delay=0,
+    delay=point_delay,
+)
 
 buffered_sweep = {
     "instrument": NodeDelay(inst=clock),
     "sweeps": [time_sweep],
     "nodes": [
         {
-            "instrument": NodeUHFLI(inst=lockin_RF),
-            "dependent": [lockin_RF_r1, lockin_RF_p1],
+            "instrument": NodeMFLI(inst=lockin_DC),
+            "dependent": [lockin_DC_r, lockin_DC_p],
+            "grid_mode": "exact",
+            "force_trigger": True,
         }
     ],
 }
 ```
 
-The example does this for a UHFLI and an MFLI, taking a target duration and a
-sample count and deriving the per-point delay from them.
+`force_trigger=True` starts the acquisition without an external trigger, while
+`grid_mode="exact"` preserves the requested sample count. The example provides
+equivalent buffered functions for a UHFLI and an MFLI, plus a stepped version
+for comparison. Prefer the buffered form for long traces because Python does
+not have to schedule every sample individually.
 
-Full example: [`time_trace_lockin.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/time_trace_lockin.py)
+Full example: [`time_trace_lockin.py`](https://gitlab.com/squad-lab/qanary/-/blob/main/examples/time_trace_lockin.py)

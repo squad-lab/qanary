@@ -10,7 +10,7 @@ import importlib.metadata
 # ----- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "QCutils"
+project = "Qanary"
 copyright = "2024-%Y, Spandan Anupam, Jyotirmaya Shivottam"
 author = "Spandan Anupam, Jyotirmaya Shivottam"
 
@@ -22,7 +22,7 @@ author = "Spandan Anupam, Jyotirmaya Shivottam"
 # form would bind `version` to a *function* and the build dies writing
 # objects.inv with "expected string or bytes-like object, got 'function'".
 try:
-    release = importlib.metadata.version("qcutils")
+    release = importlib.metadata.version("qanary")
 except importlib.metadata.PackageNotFoundError:  # built without the package
     release = "0.0.0"
 version = release
@@ -55,13 +55,13 @@ html_static_path = ["_static"]  # Path to static files used for HTML output
 # ----- Options for Theme customization -----------------------------------------
 
 html_theme = "furo"
-html_title = "QCutils"
+html_title = "Qanary"
 # The project avatar, with its white background flood-filled to transparent so
 # it does not sit in a white box against Furo's dark sidebar, and trimmed to its
 # content so it fills the sidebar slot.
-html_logo = "_static/assets/qcutils-logo.png"
+html_logo = "_static/assets/qanary-logo.png"
 # Kept square and untrimmed -- a letterboxed tab icon renders squashed.
-html_favicon = "_static/assets/qcutils-icon.png"
+html_favicon = "_static/assets/qanary-icon.png"
 html_copy_source = True
 html_last_updated_fmt = ""
 
@@ -75,13 +75,13 @@ html_theme_options = {
     "footer_icons": [
         {
             "name": "GitLab",
-            "url": "https://gitlab.com/squad-lab/qcutils",
+            "url": "https://gitlab.com/squad-lab/qanary",
             "html": "",
             "class": "fa-brands fa-gitlab",
         },
         {
             "name": "PyPI",
-            "url": "https://pypi.org/project/qcutils/",
+            "url": "https://pypi.org/project/qanary/",
             "html": "",
             "class": "fa-brands fa-python",
         },
@@ -104,13 +104,13 @@ source_suffix = {
     ".md": "markdown",
 }  # Suffixes of source files
 master_doc = "index"  # The master toctree document.
-htmlhelp_basename = "qcutilsdoc"  # Name of the help file (without suffix)
+htmlhelp_basename = "qanarydoc"  # Name of the help file (without suffix)
 html_show_sourcelink = True  # Show source link in HTML output
 html_show_copyright = True  # Show copyright in HTML output
 html_show_search_summary = True  # Show search summary in HTML output
 autodoc_typehints = "description"
 
-# NOTE: QCutils imports instrument drivers that are not installed on a docs
+# NOTE: Qanary imports instrument drivers that are not installed on a docs
 # runner. Without these, autodoc fails to import the modules it documents.
 autodoc_mock_imports = [
     "drivers",

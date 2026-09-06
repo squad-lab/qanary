@@ -8,12 +8,12 @@ import numpy as np
 import zarr
 from qcodes.parameters import Parameter
 
-from qcutils.buffered.sweep import (
+from qanary.buffered.sweep import (
     _arm_instruments,
     _buffered_sweep_progress_info,
     _fetch_results,
 )
-from qcutils.logger import get_logger
+from qanary.logger import get_logger
 
 # Public API. Everything else in this module is internal; `_stepper` in
 # particular is driven by Measurement.run, not by measurement scripts.

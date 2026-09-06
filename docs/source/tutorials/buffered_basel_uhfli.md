@@ -1,7 +1,10 @@
-# Basel DAC with a UHFLI lock-in
+# Acquire a Basel DAC sweep with a UHFLI
 
-The DAC sweeps and triggers; the lock-in acquires. This is the shape most
-buffered measurements take -- a sweeping root node with acquiring children.
+This setup uses the Basel DAC as the sweep generator and a UHFLI as the
+acquisition device. The DAC synchronization output provides the hardware
+trigger, so the sweep tree follows the same root-to-child direction.
+
+## Build the sweep tree
 
 ```python
 from qcdrivers.buffered.basel import NodeBaselDAC
@@ -14,6 +17,7 @@ buffered_sweep = {
         {
             "instrument": NodeUHFLI(inst=lockin),
             "dependent": [lockin_r, lockin_p],
+            "demod_channels": [0],
             "grid_mode": "exact",
             "input_trigger": get_trigger_channel(gate),
             "trigger_level": 0.3,
@@ -25,10 +29,20 @@ buffered_sweep = {
 measure.run([buffered_sweep], dependents=[], **run_dict)
 ```
 
-`"dependent"` lists what the lock-in records -- here R and phase.
-`"input_trigger"` names the physical trigger line the DAC drives, and
-`grid_mode="exact"` asks for one sample per setpoint rather than a resampled
-grid. The example covers both a one-dimensional sweep and a two-dimensional one
-over two gates.
+The child node settings describe what the UHFLI should acquire:
 
-Full example: [`buffered_basel_with_uhfli.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_basel_with_uhfli.py)
+- `dependent` contains the amplitude and phase parameters to store.
+- `demod_channels` identifies the demodulators behind those parameters.
+- `input_trigger` selects the trigger input wired to the active DAC board.
+- `grid_mode="exact"` requests one sample for every sweep point.
+- `trigger_delay` aligns acquisition with the updated DAC output.
+
+Configure the sample rate of every selected demodulator before running the
+sweep. For the lab wiring used by the example, the trigger inputs should use
+1 kΩ impedance. Close any open LabOne DAQ module so it does not conflict with
+the acquisition started by Qanary.
+
+For a two-dimensional scan, use the same point delay on both axes, place the
+inner sweep last, and trigger from the DAC board that drives that inner axis.
+
+Full example: [`buffered_basel_with_uhfli.py`](https://gitlab.com/squad-lab/qanary/-/blob/main/examples/buffered_basel_with_uhfli.py)

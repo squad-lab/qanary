@@ -1,5 +1,5 @@
 """
-Tests for the composite parameters in ``qcutils.parameters``.
+Tests for the composite parameters in ``qanary.parameters``.
 
 ``VirtualGate`` and ``MultiChannelParameter`` both present several physical
 gates as one sweepable knob, so the same failure mode applies to both: a
@@ -17,7 +17,7 @@ their underlying gates.
 import numpy as np
 import pytest
 
-from qcutils.parameters import (
+from qanary.parameters import (
     MultiChannelParameter,
     ParameterMixin,
     VirtualGate,

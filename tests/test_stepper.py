@@ -26,8 +26,8 @@ import xarray as xr
 import zarr
 from qcodes.parameters import Parameter
 
-from qcutils import sweep as sweep_module
-from qcutils.sweep import Sweep, _stepper
+from qanary import sweep as sweep_module
+from qanary.sweep import Sweep, _stepper
 
 
 @pytest.fixture
@@ -213,7 +213,7 @@ class TestSweepMechanics:
 
         """
         dwells = []
-        monkeypatch.setattr("qcutils.sweep.sleep", dwells.append)
+        monkeypatch.setattr("qanary.sweep.sleep", dwells.append)
         outer = Sweep(gates.x, 0.0, 1.0, num=3, start_delay=5.0)
         inner = Sweep(gates.y, 0.0, 1.0, num=2, start_delay=0.5)
         dataset = make_dataset(outer, inner)
@@ -225,7 +225,7 @@ class TestSweepMechanics:
 
     def test_delay_is_applied_at_every_point(self, gates, signal, bar, monkeypatch):
         dwells = []
-        monkeypatch.setattr("qcutils.sweep.sleep", dwells.append)
+        monkeypatch.setattr("qanary.sweep.sleep", dwells.append)
         swept = Sweep(gates.x, 0.0, 1.0, num=4, delay=0.25)
         dataset = make_dataset(swept)
 
@@ -504,7 +504,7 @@ class TestLockedDiskStore:
     @pytest.fixture(autouse=True)
     def no_backoff(self, monkeypatch):
         """Skip the exponential backoff so the retries do not take seconds."""
-        monkeypatch.setattr("qcutils.sweep.sleep", lambda seconds: None)
+        monkeypatch.setattr("qanary.sweep.sleep", lambda seconds: None)
 
     def test_a_transient_lock_is_retried(self, gates, signal, bar, tmp_path, caplog):
         swept = Sweep(gates.x, 0.0, 1.0, num=3)

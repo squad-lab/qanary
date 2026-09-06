@@ -11,9 +11,9 @@ from qcdrivers.squad.helpers.helpers import Lockin
 from qcodes.instrument import Instrument
 from qcodes.parameters import Parameter
 
-from qcutils import measure
-from qcutils.measure import Station
-from qcutils.sweep import Sweep
+from qanary import measure
+from qanary.measure import Station
+from qanary.sweep import Sweep
 
 # %%
 

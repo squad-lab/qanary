@@ -20,13 +20,13 @@ import pytest
 import xarray as xr
 import zarr
 
-from qcutils import measure
-from qcutils.measure import (
+from qanary import measure
+from qanary.measure import (
     _live_store_root,
     _prune_orphaned_live_stores,
     _target_marker,
 )
-from qcutils.sweep import Sweep
+from qanary.sweep import Sweep
 
 
 @pytest.fixture
@@ -54,8 +54,8 @@ def _store(path: Path, points: int = 3) -> None:
 
 
 class TestLocation:
-    def test_the_root_is_under_the_qcutils_home(self, tmp_path):
-        assert _live_store_root() == tmp_path / "qcutils-home" / "live"
+    def test_the_root_is_under_the_qanary_home(self, tmp_path):
+        assert _live_store_root() == tmp_path / "qanary-home" / "live"
         assert _live_store_root().is_dir()
 
     def test_a_measurement_puts_its_store_there_not_in_the_data_directory(
@@ -171,7 +171,7 @@ class TestFailedExportRescue:
         rescued = Path(measurement.datalogging) / f"{measurement.id}.zarr"
         assert rescued.exists(), "the only copy of the run must survive"
         assert not Path(measurement.live_data).exists()
-        assert "qcutils.dataset.convert" in caplog.text
+        assert "qanary.dataset.convert" in caplog.text
 
     def test_a_failed_export_with_no_store_reports_the_loss(self, measurement, caplog):
         with patch.object(
