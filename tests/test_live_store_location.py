@@ -58,6 +58,14 @@ class TestLocation:
         assert _live_store_root() == tmp_path / "qanary-home" / "live"
         assert _live_store_root().is_dir()
 
+    def test_a_tilde_in_qanary_home_is_expanded(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.setenv("QANARY_HOME", "~/custom-qanary-home")
+
+        assert _live_store_root() == tmp_path / "custom-qanary-home" / "live"
+        assert _live_store_root().is_dir()
+
     def test_a_measurement_puts_its_store_there_not_in_the_data_directory(
         self, measurement
     ):

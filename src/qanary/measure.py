@@ -68,7 +68,7 @@ def _live_store_root() -> Path:
 
     """
     home = os.environ.get("QANARY_HOME")
-    directory = (Path(home) if home else Path.home() / ".qanary") / "live"
+    directory = (Path(home).expanduser() if home else Path.home() / ".qanary") / "live"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
