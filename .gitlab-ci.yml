@@ -17,6 +17,9 @@ include:
 variables:
   SECRET_DETECTION_ENABLED: "true"
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.uv-cache"
+  # Portable git for the Windows test job. Pinned rather than "latest" so a
+  # moved URL fails the download loudly instead of drifting.
+  MINGIT_URL: "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip"
 
 sast:
   stage: test
@@ -70,6 +73,16 @@ pytest-windows:
   variables:
     PYTHON_VERSION: "3.13"
   before_script:
+    # The python:3.13 Windows image ships no git -- the runner clones with
+    # its helper image instead. The test suite needs a real one:
+    # tests/test_measure.py imports GitPython at module scope and builds
+    # throwaway repositories to exercise the hash-push path. MinGit is the
+    # portable Git for Windows build: a zip, no installer, no admin rights.
+    - $ProgressPreference = "SilentlyContinue"
+    - Invoke-WebRequest -Uri "$env:MINGIT_URL" -OutFile "$env:TEMP\mingit.zip"
+    - Expand-Archive -Path "$env:TEMP\mingit.zip" -DestinationPath "C:\mingit" -Force
+    - $env:Path = "C:\mingit\cmd;$env:Path"
+    - git --version
     - powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
     - $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
   script:
