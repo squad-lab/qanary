@@ -1,10 +1,11 @@
 # Our own drivers are needed to prevent timing issues with some of the keysight DMMs. 34410a seemingly supports sample_time for ramped measurements, but 34461a does not. This driver removes all timing features so that the driver can be used without throwing errors in the DMM.
-from drivers.keysight.dmms import Keysight34461A
+from qcdrivers.buffered.keysight import NodeKeysightDMM
+from qcdrivers.buffered.qdevil import NodeQDAC2
+from qcdrivers.keysight.dmms import Keysight34461A
 from qcodes.instrument import Instrument
 from qcodes_contrib_drivers.drivers.QDevil.QDAC2 import QDac2
 
 from qcutils import measure
-from qcutils.buffered.instruments import NodeKeysightDMM, NodeQDAC2
 from qcutils.measure import Station
 from qcutils.sweep import Sweep
 

@@ -1,5 +1,7 @@
 ## QCUtils Changelog
 
+<!-- version list -->
+
 ### v0.8.0 - 2026-04-02
 
 - [Feature] Introduced dataset utilities (`datasets.py`) for common measurement operations
@@ -23,19 +25,19 @@
 - [Misc] General cleanup, refactoring, and merge of multiple feature/fix branches (datasets, sweeps, measurement handling)
 
 #### Merge Requests included in this release
-- !32 — Log space sweep
-- !31 — Station remove parameter
-- !30 — Measure tabulate fix
-- !29 — Circular sweep fix
-- !28 — MultiChannelParameter fix
-- !27 — Basel safe sweep (multichannelparameter adjustments)
-- !26 — Bux fix measurement
-- !25 — Segmented sweep fix
-- !24 — QCoDeS parameter classes
-- !23 — QCoDeS parameter classes
+- !32 - Log space sweep
+- !31 - Station remove parameter
+- !30 - Measure tabulate fix
+- !29 - Circular sweep fix
+- !28 - MultiChannelParameter fix
+- !27 - Basel safe sweep (multichannelparameter adjustments)
+- !26 - Bux fix measurement
+- !25 - Segmented sweep fix
+- !24 - QCoDeS parameter classes
+- !23 - QCoDeS parameter classes
 
 #### Contributors
 - Spandan Anupam
 - Simon Schreibing
-- JeS24
+- Jyotirmaya Shivottam
 - Julius

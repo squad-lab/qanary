@@ -1,11 +1,15 @@
-from qcodes import Parameter
-from qcodes import validators as vals
-
 from typing import Sequence
+
 import numpy as np
+from qcodes import validators as vals
+from qcodes.parameters import Parameter
 
-
-### helper ###
+# Public API
+__all__ = [
+    "ParameterMixin",
+    "VirtualGate",
+    "MultiChannelParameter",
+]
 
 
 def _root_instrument(param: Parameter):
@@ -15,10 +19,22 @@ def _root_instrument(param: Parameter):
     return instr
 
 
-##############
-
-
 class ParameterMixin:
+    """
+    Alias an existing QCoDeS parameter for station metadata.
+
+    The returned object keeps the original parameter class and state while
+    optionally replacing its short name and label.
+
+    Args:
+        param (Parameter): Existing QCoDeS parameter.
+        name (str): Optional short name override.
+        label (str): Optional display-label override.
+        param_type (str): Category stored in the parameter snapshot. Defaults
+            to ``"gate"``.
+
+    """
+
     def __init__(
         self,
         param: Parameter,
@@ -38,31 +54,8 @@ class ParameterMixin:
 
 class VirtualGate(Parameter):
     """
-    Parameter representing a linear virtual gate composed of multiple gates.
+    Linear virtual coordinate composed from parameters on one instrument.
 
-    Setting this parameter applies a linear transformation (like a rotation) to each underlying
-    gate using predefined factors and offsets. Getting the parameter returns
-    the current values of all underlying gates.
-
-    Parameters
-    ----------
-    gates : list[Parameter]
-        Underlying gate parameters controlled by the virtual gate.
-    factors : list[float]
-        Linear scaling factors applied to the virtual gate value.
-    offsets : list[float]
-        Offsets added after scaling for each gate.
-    rot_angle_deg : float, optional
-        If provided, overrides factors and offsets to represent a rotation by this angle in degrees counter clockwise. first gate is x direction, second gate is y direction. Offsets are set to zero.
-    points : list[tuple[float, float]], optional
-        If provided, overrides factors and offsets to represent a virtual gate defined by two points in the 2D space of the first two gates. The first point defines the offset, and the direction from the first to the second point defines the factors. voltage steps along the virtual gate correspond to the distance between the two points.
-    name : str, optional
-        Parameter name. If None, a name is generated from the gate names.
-    label : str, optional
-        Display label. If None, a label describing the linear combination
-        is generated automatically.
-    param_type : str
-        Type of the parameter, default is "virtual_gate_linear".
     """
 
     def __init__(
@@ -77,6 +70,40 @@ class VirtualGate(Parameter):
         param_type: str = "virtual_gate_linear",
         **kwargs,
     ):
+        """
+        Create a virtual gate from coefficients, a rotation, or two points.
+
+        Setting virtual value ``v`` writes ``factor * v + offset`` to each
+        underlying gate. Reading returns a tuple containing every physical gate
+        value.
+
+        Args:
+            gates (list[Parameter]): Underlying gate parameters. They must share
+                one root instrument.
+            factors (list[float]): Scale factor for each gate.
+            offsets (list[float]): Offset for each gate.
+            rot_angle_deg (float | None): For exactly two gates, replace
+                *factors* with the unit vector at this counter-clockwise angle
+                and set both offsets to zero.
+            points (list[tuple[float, float]]): For exactly two gates, use the
+                first point as the offset and the normalized direction to the
+                second point as the factors. This takes precedence when supplied
+                together with a rotation.
+            name (str | None): QCoDeS parameter name. Generated from gate names
+                when omitted.
+            label (str | None): Display label. Generated from gate names when
+                omitted.
+            param_type (str): Snapshot category. Defaults to
+                ``"virtual_gate_linear"``.
+            **kwargs: Additional keyword arguments passed to QCoDeS
+                :class:`~qcodes.parameters.Parameter`.
+
+        Raises:
+            ValueError: If coefficient lengths differ from the gate count, a
+                two-dimensional definition does not receive exactly two gates,
+                the two points coincide, or gates have different roots.
+
+        """
         self.gates = gates
         self.param_type = param_type
 
@@ -143,14 +170,17 @@ class VirtualGate(Parameter):
         )
 
     def set_raw(self, value: float):
+        """Apply the configured linear transformation to every gate."""
         for ch, f, o in zip(self.gates, self.factors, self.offsets):
             ch(f * value + o)
 
     def get_raw(self) -> float:
+        """Return the current values of all underlying gates as a tuple."""
         vals = tuple(ch.get() for ch in self.gates)
         return vals
 
     def snapshot_base(self, update=False, params_to_skip_update=None):
+        """Extend the QCoDeS snapshot with the virtual-gate transformation."""
         snap = super().snapshot_base(
             update=update,
             params_to_skip_update=params_to_skip_update,
@@ -176,6 +206,11 @@ class VirtualGate(Parameter):
 
 
 class MultiChannelParameter(Parameter):
+    """
+    Expose several channels on one instrument as a single parameter.
+
+    """
+
     def __init__(
         self,
         param: Sequence[Parameter],
@@ -184,6 +219,25 @@ class MultiChannelParameter(Parameter):
         param_type: str = "gates",
         **kwargs,
     ):
+        """
+        Create a parameter that writes the same value to every channel.
+
+        Args:
+            param (Sequence[Parameter]): One or more channels sharing a root
+                instrument.
+            name (str): Optional parameter name generated from channel names
+                when omitted.
+            label (str): Optional label generated from channel labels when
+                omitted.
+            param_type (str): Snapshot category. Defaults to ``"gates"``.
+            **kwargs: Additional keyword arguments passed to QCoDeS
+                :class:`~qcodes.parameters.Parameter`.
+
+        Raises:
+            ValueError: If no channels are supplied or their root instruments
+                differ.
+
+        """
         channels = list(param)
 
         if not channels:
@@ -215,10 +269,18 @@ class MultiChannelParameter(Parameter):
         self.param_type = param_type
 
     def set_raw(self, value: float):
+        """
+        Write *value* to every channel.
+
+        """
         for ch in self.channels:
             ch(value)
 
     def get_raw(self):
+        """
+        Return the common channel value, or ``None`` if values differ.
+
+        """
         values = tuple(ch.get() for ch in self.channels)
 
         if all(v == values[0] for v in values):
@@ -231,6 +293,10 @@ class MultiChannelParameter(Parameter):
         update=False,
         params_to_skip_update=None,
     ):
+        """
+        Extend the QCoDeS snapshot with channel identities and type.
+
+        """
         snap = super().snapshot_base(
             update=update,
             params_to_skip_update=params_to_skip_update,

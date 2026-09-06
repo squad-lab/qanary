@@ -1,52 +1,118 @@
+"""
+Internal traversal and orchestration helpers for buffered sweep trees.
+
+"""
+
 from functools import wraps
 from inspect import signature
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from qcutils.logger import get_logger
+
+# Buffered orchestration is internal: qcutils.sweep drives it. Nothing here
+# is part of the measurement-script API.
+__all__: list[str] = []
+
 
 logger = get_logger(__name__)
 
 
-def parse_bufsweep_tree(visitor):
+def _buffered_sweep_progress_info(root_payload: Dict[str, Any]) -> Tuple[int, float]:
     """
-    Walk a buffered sweep tree (new schema) and call `visitor` at each node.
+    Return the point count and estimated duration of a buffered block.
 
-    Schema (enforced)
-    -----------------
-    - `buffered_sweep` is a **single node payload dict** (the root).
-    - Each node `payload` is a dict that may contain:
-        - "name":         optional str
-        - "instrument":   device object for this node
-        - "sweeps":       optional sweep specification(s) for sweep nodes
-        - "dependent":    optional dependent spec(s) for measurement nodes
-        - "nodes":        optional list[child_payload_dict]
-    - Children must be a **list**. Each child may omit "name" (auto-named node1, node2, ...).
+    Buffered sibling branches are driven concurrently, so one block is
+    represented by its longest coordinate path instead of by summing every
+    dependent. Instrument setup and result-fetch overhead are not included in
+    the duration estimate.
 
-    Visitor contract
-    ----------------
-    The walker calls:
+    Args:
+        root_payload (Dict[str, Any]): Root dictionary of the buffered sweep
+            tree.
 
-        visitor(
-            node: str,
-            payload: dict,
-            *,
-            parent: Optional[str],
-            path: Tuple[str, ...],
-            instrument: Any,
-            toplevel: Optional[Any],
-            num_points: int,
-            step_time: float,
-            trigger_type: Optional[str],
-            state: Dict[str, Any],
-        ) -> Optional[Dict[str, Any]]
+    Returns:
+        Tuple[int, float]: The largest buffered point count and the estimated
+            duration in seconds of the slowest branch.
 
-    If the visitor returns a dict, the following keys (if present) are propagated
-    down this node's subtree only:
-        - "num_points" : int
-        - "step_time"  : float
-        - "trigger_type": optional str
-        - "toplevel"   : Any
-        - "state"      : dict  (branch-local)
+    Raises:
+        TypeError: If the root, a child, ``sweeps``, or ``nodes`` has an invalid
+            type.
+
+    """
+
+    if not isinstance(root_payload, dict):
+        raise TypeError("Buffered sweep root must be a payload dict.")
+
+    best_points = 1
+    best_duration = 0.0
+
+    def walk(payload: Dict[str, Any], points: int, step_time: float) -> None:
+        """
+        Visit one node and recursively inspect its descendants.
+
+        Args:
+            payload (Dict[str, Any]): Current buffered-tree node.
+            points (int): Point count inherited from the parent path.
+            step_time (float): Point spacing inherited from the parent path.
+
+        Raises:
+            TypeError: If the node, ``sweeps``, or ``nodes`` has an invalid
+                type.
+
+        """
+        nonlocal best_points, best_duration
+
+        if not isinstance(payload, dict):
+            raise TypeError("Each buffered sweep node must be a payload dict.")
+
+        sweeps = payload.get("sweeps", []) or []
+        if not isinstance(sweeps, (list, tuple)):
+            raise TypeError("'sweeps' must be a list or tuple of sweep objects.")
+
+        current_points = points
+        current_step_time = step_time
+        for sweep in sweeps:
+            current_points *= len(sweep.values)
+            current_step_time = float(sweep.delay)
+
+        current_duration = current_points * current_step_time
+        best_points = max(best_points, current_points)
+        best_duration = max(best_duration, current_duration)
+
+        children = payload.get("nodes", []) or []
+        if not isinstance(children, list):
+            raise TypeError("'nodes' must be a list of child payload dicts.")
+        for child in children:
+            walk(child, current_points, current_step_time)
+
+    walk(root_payload, points=1, step_time=0.0)
+    return best_points, best_duration
+
+
+def _parse_bufsweep_tree(
+    visitor: Callable[..., Optional[Dict[str, Any]]],
+) -> Callable[..., Any]:
+    """
+    Build a depth-first walker around a buffered-tree visitor.
+
+    The returned callable accepts one root payload dictionary. Each payload may
+    contain ``name``, ``instrument``, ``sweeps``, ``dependent``, and a ``nodes``
+    list. Missing names become ``"root"`` or ``"nodeN"``. The visitor runs
+    before the node's children and receives the node, its path, its instrument,
+    and the sweep state inherited from its parent. The root must provide an
+    instrument because it establishes the top-level controller.
+
+    A visitor may return updated ``num_points``, ``step_time``,
+    ``trigger_type``, ``toplevel``, or ``state`` values. Those values apply only
+    to that node's descendants, which keeps sibling state independent.
+
+    Args:
+        visitor (Callable[..., Optional[Dict[str, Any]]]): Function invoked once
+            for every payload.
+
+    Returns:
+        Callable[..., Any]: Tree walker with the visitor's name and docstring.
+
     """
 
     def _assert_payload(d: Dict[str, Any]) -> None:
@@ -168,22 +234,43 @@ def parse_bufsweep_tree(visitor):
     return _walk_tree
 
 
-@parse_bufsweep_tree
-def arm_instruments(
-    node,
-    payload,
+@_parse_bufsweep_tree
+def _arm_instruments(
+    node: str,
+    payload: Dict[str, Any],
     *,
-    parent,
-    path,
-    instrument,
-    num_points,
-    step_time,
-    trigger_type,
-    state,
-    **kwargs,
-):
+    parent: Optional[str],
+    path: Tuple[str, ...],
+    instrument: Any,
+    num_points: int,
+    step_time: float,
+    trigger_type: Optional[str],
+    state: Dict[str, Any],
+    **kwargs: Any,
+) -> Dict[str, Any]:
     """
-    Configure instruments and propagate sweep values.
+    Configure one buffered node and propagate its acquisition state.
+
+    Sweep nodes are configured first. Non-root sweep nodes start immediately,
+    while the root is started later by the caller. Dependent acquisition is
+    then configured with the cumulative point count, step time, and trigger
+    type.
+
+    Args:
+        node (str): Current node name.
+        payload (Dict[str, Any]): Current buffered-tree payload.
+        parent (Optional[str]): Parent node name.
+        path (Tuple[str, ...]): Names from the root through this node.
+        instrument (Any): Buffered node adapter to configure.
+        num_points (int): Point count inherited from the parent path.
+        step_time (float): Step time inherited from the parent path.
+        trigger_type (Optional[str]): Trigger type inherited from the parent.
+        state (Dict[str, Any]): Mutable traversal state.
+        **kwargs (Any): Additional values supplied by the tree walker.
+
+    Returns:
+        Dict[str, Any]: Values to propagate through this node's subtree.
+
     """
 
     structural_keys = {"name", "instrument", "dependent", "sweeps", "nodes"}
@@ -244,12 +331,36 @@ def arm_instruments(
     }
 
 
-@parse_bufsweep_tree
-def fetch_dependents_tree(
-    node, payload, *, parent, path, instrument, state, only_leaves=False, **kwargs
-):
+@_parse_bufsweep_tree
+def _fetch_dependents_tree(
+    node: str,
+    payload: Dict[str, Any],
+    *,
+    parent: Optional[str],
+    path: Tuple[str, ...],
+    instrument: Any,
+    state: Dict[str, Any],
+    only_leaves: bool = False,
+    **kwargs: Any,
+) -> Dict[str, Any]:
     """
-    Visitor to build a dependent-tree summary.
+    Collect each dependent's sweep path without reading instrument data.
+
+    Args:
+        node (str): Current node name.
+        payload (Dict[str, Any]): Current buffered-tree payload.
+        parent (Optional[str]): Parent node name.
+        path (Tuple[str, ...]): Names from the root through this node.
+        instrument (Any): Buffered node adapter for the current payload.
+        state (Dict[str, Any]): Traversal state containing the shared result
+            collector.
+        only_leaves (bool): Collect only leaf nodes when true.
+        **kwargs (Any): Additional values supplied by the tree walker.
+
+    Returns:
+        Dict[str, Any]: Branch-local sweep state and the shared dependent
+            mapping.
+
     """
 
     children = payload.get("nodes", [])
@@ -257,44 +368,94 @@ def fetch_dependents_tree(
     has_fetch = hasattr(instrument, "fetch") and callable(instrument.fetch)
     should_fetch = has_fetch and (is_leaf if only_leaves else True)
 
-    # global collector
+    # Shared collector across every branch.
     state.setdefault("dependent_tree", {})
 
-    # track sweeps
-    if "sweeps" in payload:
-        state.setdefault("sweeps", [])
-        state.setdefault("sweep_shape", [])
-        for sw in payload["sweeps"]:
-            state["sweeps"].append(sw)
-            state["sweep_shape"].append(sw.values.shape[0])
+    # Sweep metadata is branch-local. Copies prevent sibling sweeps from being
+    # included in this dependent's dimensions, while the collector remains
+    # shared across the tree.
+    sweeps = list(state.get("sweeps", []))
+    sweep_shape = list(state.get("sweep_shape", []))
+    for sw in payload.get("sweeps", []):
+        sweeps.append(sw)
+        sweep_shape.append(sw.values.shape[0])
 
-    # collect dependent metadata
+    # Collect dependent metadata.
     if should_fetch:
-        sweep_shape = list(state.get("sweep_shape", []))
-        sweeps = list(state.get("sweeps", []))
-
         for dep in payload.get("dependent", []):
             state["dependent_tree"][dep] = {
-                "sweep_shape": sweep_shape,
-                "sweeps": sweeps,
+                "sweep_shape": list(sweep_shape),
+                "sweeps": list(sweeps),
             }
 
+    return {
+        "state": {
+            "dependent_tree": state["dependent_tree"],
+            "sweeps": sweeps,
+            "sweep_shape": sweep_shape,
+        }
+    }
 
-@parse_bufsweep_tree
-def abort_instruments(node, payload, *, instrument, path, **kwargs):
-    """Abort every instrument in a buffered sweep tree."""
+
+@_parse_bufsweep_tree
+def _abort_instruments(
+    node: str,
+    payload: Dict[str, Any],
+    *,
+    instrument: Any,
+    path: Tuple[str, ...],
+    **kwargs: Any,
+) -> None:
+    """
+    Abort one buffered node, logging and suppressing cleanup failures.
+
+    Args:
+        node (str): Current node name.
+        payload (Dict[str, Any]): Current buffered-tree payload.
+        instrument (Any): Buffered node adapter to abort.
+        path (Tuple[str, ...]): Names from the root through this node.
+        **kwargs (Any): Additional values supplied by the tree walker.
+
+    """
     try:
         instrument.abort()
     except Exception as exc:
         logger.warning("[%s] failed to abort instrument: %s", "/".join(path), exc)
 
 
-@parse_bufsweep_tree
-def fetch_results(
-    node, payload, *, parent, path, instrument, state, only_leaves=False, **kwargs
-):
+@_parse_bufsweep_tree
+def _fetch_results(
+    node: str,
+    payload: Dict[str, Any],
+    *,
+    parent: Optional[str],
+    path: Tuple[str, ...],
+    instrument: Any,
+    state: Dict[str, Any],
+    only_leaves: bool = False,
+    **kwargs: Any,
+) -> Dict[str, Any]:
     """
-    Visitor to build a dependent-tree summary.
+    Fetch one buffered node and collect arrays by dependent parameter.
+
+    Each fetched array is reshaped to the dimensions accumulated along its own
+    branch. Fetch and reshape failures are logged so other branches can still
+    be collected.
+
+    Args:
+        node (str): Current node name.
+        payload (Dict[str, Any]): Current buffered-tree payload.
+        parent (Optional[str]): Parent node name.
+        path (Tuple[str, ...]): Names from the root through this node.
+        instrument (Any): Buffered node adapter to fetch.
+        state (Dict[str, Any]): Traversal state containing the shared result
+            collector.
+        only_leaves (bool): Fetch only leaf nodes when true.
+        **kwargs (Any): Additional values supplied by the tree walker.
+
+    Returns:
+        Dict[str, Any]: Branch-local sweep state and the shared results mapping.
+
     """
 
     children = payload.get("nodes", [])
@@ -304,21 +465,21 @@ def fetch_results(
         has_fetch and (is_leaf if only_leaves else True) and ("dependent" in payload)
     )
 
-    # global collector
+    # Shared collector across every branch.
     state.setdefault("results_tree", {})
 
-    # track sweeps
-    if "sweeps" in payload:
-        state.setdefault("sweeps", [])
-        state.setdefault("sweep_shape", [])
-        for sw in payload["sweeps"]:
-            state["sweeps"].append(sw)
-            state["sweep_shape"].append(sw.values.shape[0])
+    # Sweep metadata is branch-local. Copies prevent sibling dimensions from
+    # affecting this result, while the collector remains shared across the tree.
+    branch_sweeps = list(state.get("sweeps", []))
+    branch_shape = list(state.get("sweep_shape", []))
+    for sw in payload.get("sweeps", []):
+        branch_sweeps.append(sw)
+        branch_shape.append(sw.values.shape[0])
 
-    # collect dependent metadata
+    # Collect fetched results.
     if should_fetch:
-        sweep_shape = tuple(state.get("sweep_shape", []))
-        sweeps = tuple(state.get("sweeps", []))
+        sweep_shape = tuple(branch_shape)
+        sweeps = tuple(branch_sweeps)
 
         try:
             result_arrays = instrument.fetch()
@@ -332,3 +493,11 @@ def fetch_results(
 
         except Exception as exc:
             logger.error(f"[{'/'.join(path)}] fetch() failed: {exc}")
+
+    return {
+        "state": {
+            "results_tree": state["results_tree"],
+            "sweeps": branch_sweeps,
+            "sweep_shape": branch_shape,
+        }
+    }

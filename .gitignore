@@ -79,3 +79,11 @@ D:
 
 # Variants of example.py
 example.*.py
+
+# Docs build and test artefacts
+docs/build/
+docs/build/gettext/
+docs/public/
+public/
+.uv-cache/
+report.xml

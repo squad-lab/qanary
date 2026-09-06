@@ -1,12 +1,6 @@
-
-import matplotlib.pyplot as plt
-import numpy as np
+from qcdrivers.squad import ShellInstrument
 
 from qcutils.parameters import MultiChannelParameter
-
-from drivers.squad.helpers.helpers import ShellInstrument
-
-
 
 dummy = ShellInstrument("dummy", {})
 dummy2 = ShellInstrument("dummy2", {})
@@ -54,4 +48,3 @@ print(multi_param.name)
 print(multi_param.label)
 
 print(multi_param.snapshot())
-

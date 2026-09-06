@@ -7,6 +7,11 @@ import logging
 import sys
 from typing import Optional
 
+# Public API. `_setup_logging` is called on import.
+__all__ = [
+    "get_logger",
+]
+
 
 # Default logging format
 DEFAULT_FORMAT = "%(levelname)s: %(message)s"
@@ -16,7 +21,7 @@ DETAILED_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 _LOGGING_CONFIGURED = False
 
 
-def setup_logging(
+def _setup_logging(
     level: int = logging.INFO,
     format_string: Optional[str] = None,
     use_detailed_format: bool = False,
@@ -68,10 +73,10 @@ def get_logger(name: str) -> logging.Logger:
 
     """
     if not _LOGGING_CONFIGURED:
-        setup_logging()
+        _setup_logging()
 
     return logging.getLogger(name)
 
 
 # Initialize logging with default configuration
-setup_logging()
+_setup_logging()

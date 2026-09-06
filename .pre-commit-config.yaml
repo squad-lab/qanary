@@ -1,0 +1,29 @@
+# Run `uv sync --extra dev` then `uv run pre-commit install` once per clone.
+#
+# Rules live in pyproject.toml ([tool.ruff]), so these hooks apply exactly the
+# same configuration as the CI `lint` job.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep this exact version aligned with pyproject.toml and .gitlab-ci.yml.
+    rev: v0.16.6
+    hooks:
+      # NOTE: Import sorting is part of `ruff check` via the "I" rules; the `ruff format`
+      # does not do it.
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        # A check to ensure large files, e.g., test measurement data, does not end up in the repository.
+        args: [--maxkb=512]
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        # Two trailing spaces are a hard line break in Markdown; stripping them
+        # silently reflows the README and the docs pages.
+        args: [--markdown-linebreak-ext=md]
