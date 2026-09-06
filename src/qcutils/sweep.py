@@ -270,7 +270,8 @@ class Sweep:
         ramprate: float = 0.0,
         spacing: str = "lin",
     ) -> None:
-        """Define an inclusive linear or logarithmic parameter sweep.
+        """
+        Define an inclusive linear or logarithmic parameter sweep.
 
         Args:
             parameter (Parameter | Sequence[Parameter]): QCoDeS parameter or
@@ -335,7 +336,8 @@ class CircularSweep:
         ramprate: float = 0.0,
         repetitions: int = 1,
     ) -> None:
-        """Define a sweep from start to stop and back, optionally repeated.
+        """
+        Define a sweep from start to stop and back, optionally repeated.
 
         Args:
             parameter (Parameter | Sequence[Parameter]): QCoDeS parameter or
@@ -399,7 +401,8 @@ class SegmentedSweep:
         center_width: int | float,
         factor: float = 10.0,
     ) -> None:
-        """Define a three-part linear sweep with finer sampling near a center.
+        """
+        Define a three-part linear sweep with finer sampling near a center.
 
         Args:
             parameter (Parameter): QCoDeS parameter to sweep.
@@ -452,7 +455,8 @@ class SegmentedSweep:
 
 
 def _sweep_param(sweep: Sweep = None, override: list = None):
-    """Does a single sweep
+    """
+    Does a single sweep
 
     Args:
      sweep
@@ -495,7 +499,8 @@ def _sweep_parameters(sweep: Sweep) -> list:
 
 
 def sweeper(sweeps: Sweep | Sequence[Sweep], parallel: bool = False):
-    """Move parameters through one or more sweeps without recording data.
+    """
+    Move parameters through one or more sweeps without recording data.
 
     Args:
         sweeps (Sweep | Sequence[Sweep]): Sweep or sweeps to execute.
@@ -520,7 +525,8 @@ def sweeper(sweeps: Sweep | Sequence[Sweep], parallel: bool = False):
 
 
 def rampdown(parameters: Parameter | Sequence[Parameter], ramprate: float = None):
-    """Move one or more parameters from their current values to zero.
+    """
+    Move one or more parameters from their current values to zero.
 
     Args:
         parameters (Parameter | Sequence[Parameter]): QCoDeS parameters to
