@@ -45,8 +45,6 @@ pytest:
   before_script:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - source $HOME/.local/bin/env
-    # `drivers` is a GitLab dependency. Use the job token if it is private.
-    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
   script:
     - uv sync --python "$PYTHON_VERSION" --extra test
     - uv run --python "$PYTHON_VERSION" pytest --cov --cov-report=term --cov-report=xml --junitxml=report.xml
@@ -74,7 +72,6 @@ pytest-windows:
   before_script:
     - powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
     - $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
-    - git config --global "url.https://gitlab-ci-token:$env:CI_JOB_TOKEN@$env:CI_SERVER_HOST/.insteadOf" "https://$env:CI_SERVER_HOST/"
   script:
     - uv sync --python $env:PYTHON_VERSION --extra test
     - uv run --python $env:PYTHON_VERSION pytest --junitxml=report.xml
@@ -92,7 +89,6 @@ deploy-pages:
   before_script:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - source $HOME/.local/bin/env
-    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
   script:
     - uv sync --group docs
     - uv run sphinx-build -M html docs/source docs/public
@@ -167,30 +163,23 @@ gitlab_release:
         --notes-file CHANGELOG.md \
         --ref "$RELEASE_TAG"
 
-# DISABLED: QCUtils is not published to PyPI yet. Its `drivers` dependency is
-# resolved from GitLab through [tool.uv.sources], which is a uv-local override
-# that never reaches the wheel metadata -- a `pip install qcutils` off PyPI
-# would resolve the unrelated PyPI package named `drivers`. PyPI also rejects
-# direct-URL requirements, so the git URL cannot be declared instead.
-# Re-enable this job once `drivers` is published to PyPI and the dependency can
-# be pinned normally. PYPI_SPANDAN (masked, protected) already holds the token.
-# pypi:
-#   stage: release
-#   needs:
-#     - job: semantic_release
-#       artifacts: true
-#   rules:
-#     - if: $CI_COMMIT_BRANCH == "main" && $PYPI_SPANDAN
-#   before_script:
-#     - curl -LsSf https://astral.sh/uv/install.sh | sh
-#     - source $HOME/.local/bin/env
-#   script:
-#     - |
-#       if ! ls dist/*.whl >/dev/null 2>&1; then
-#         echo "semantic-release produced no distribution -- nothing to publish."
-#         exit 0
-#       fi
-#     - uv publish --token "$PYPI_SPANDAN"
+pypi:
+  stage: release
+  needs:
+    - job: semantic_release
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $PYPI_SPANDAN
+  before_script:
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - source $HOME/.local/bin/env
+  script:
+    - |
+      if ! ls dist/*.whl >/dev/null 2>&1; then
+        echo "semantic-release produced no distribution -- nothing to publish."
+        exit 0
+      fi
+    - uv publish --token "$PYPI_SPANDAN"
 
 build_package:
   stage: release
