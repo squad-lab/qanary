@@ -1,6 +1,6 @@
 [project]
 name = "qanary"
-version = "0.10.0"
+version = "0.10.1"
 authors = [
   { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
   { name="Simon Schreibing", email="s.schreibing@fz-juelich.de" },

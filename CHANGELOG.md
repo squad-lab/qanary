@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.10.1 (2026-09-06)
+
+### Bug Fixes
+
+- **docs**: Use the canonical Qanary URL
+  ([`86b6999`](https://gitlab.com/squad-lab/qanary/-/commit/86b699970d02dc4d07e865f9283ebaa569df063f))
+
+
 ## v0.10.0 (2026-09-06)
 
 
