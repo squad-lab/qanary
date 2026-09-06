@@ -1,0 +1,54 @@
+/* Adapted from the Qimchi Dash documentation stylesheet.
+
+/* Sidebar brand: mark on the left, wordmark beside it, on one row. */
+.sidebar-brand {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.6rem;
+    text-align: left;
+    margin: 0.5rem auto 0;
+}
+
+.sidebar-logo-container {
+    /* Furo adds vertical margin here for the stacked layout. */
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+.sidebar-logo {
+    /* Size by height, not width: the mark is roughly 1.4:1, so constraining the
+     * width would leave it shorter than the wordmark beside it.
+     */
+    max-height: 2.25rem;
+    width: auto;
+    max-width: none;
+    margin: 0;
+}
+
+.sidebar-brand-text {
+    margin: 0;
+}
+
+/* SQUAD / FZJ accent on top of Furo's defaults. */
+body {
+    --color-brand-primary: #0b7285;
+    --color-brand-content: #0b7285;
+}
+
+body[data-theme="dark"] {
+    --color-brand-primary: #4dabf7;
+    --color-brand-content: #4dabf7;
+}
+
+@media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) {
+        --color-brand-primary: #4dabf7;
+        --color-brand-content: #4dabf7;
+    }
+}
+
+/* Sweep and measurement signatures are long; wrap them rather than overflow. */
+dl.py > dt {
+    white-space: normal;
+}

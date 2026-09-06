@@ -1,8 +1,24 @@
 # QCUtils
 
+[![pipeline](https://gitlab.com/squad-lab/qcutils/badges/main/pipeline.svg?ignore_skipped=true&key_text=pipeline&key_width=60)](https://gitlab.com/squad-lab/qcutils/-/pipelines?ref=main)
+[![tests](https://gitlab.com/squad-lab/qcutils/badges/main/pipeline.svg?job=pytest%3A%20%5B3.13%5D&ignore_skipped=true&key_text=tests&key_width=40)](https://gitlab.com/squad-lab/qcutils/-/pipelines?ref=main)
+[![coverage](https://gitlab.com/squad-lab/qcutils/badges/main/coverage.svg?key_text=coverage&key_width=64)](https://gitlab.com/squad-lab/qcutils/-/jobs)
+[![latest release](https://gitlab.com/squad-lab/qcutils/-/badges/release.svg?key_text=release&key_width=54)](https://gitlab.com/squad-lab/qcutils/-/releases)
+
 QCUtils simplifies measurement workflows and replaces QCoDeS for handling measurements.
 
-## Preparation
+## Installation
+
+QCUtils requires Python 3.13 and [uv](https://docs.astral.sh/uv/). uv is the
+only supported installer.
+
+QCUtils is not published on PyPI. Install it from GitLab:
+
+```console
+uv add git+https://gitlab.com/squad-lab/qcutils.git
+```
+
+## Preparing a measurement project
 
 We manage and run our measurements using the tool `uv`. To get started, follow the official [Astral installation guide](https://astral.sh/uv/) to install `uv`. It handles virtual environments and package dependencies for you, simplifying Python package management.
 
@@ -15,16 +31,14 @@ uv init measurement_name
 cd measurement_name
 ```
 
-This command automatically creates a virtual environment and installs the necessary dependencies. To add additional packages to your project, use the `uv add` command. For example, to add commonly used packages, like `qcutils`, you can run:
+Add QCUtils to the project with:
 
 ```sh
-uv add git+https://gitlab.com/squad-lab/qcutils        # Install qcutils
-uv add git+https://gitlab.com/squad-lab/measurements/drivers # Install squad drivers
-uv add qcodes_contrib_drivers                         # Install additional drivers
+uv add git+https://gitlab.com/squad-lab/qcutils.git
 ```
 
 > [!note] NOTE  
-> The `qcutils`, `qcodes`, `zhinst`, and `zhinst-qcodes` packages are all managed by `qcutils`, so there's no need to install them separately.
+> QCUtils installs its QCoDeS, Zurich Instruments, live-visualization, and driver dependencies, so there is no need to add them separately.
 
 ### Running Commands
 
@@ -34,17 +48,9 @@ Instead of manually activating a virtual environment and running `python -m pack
 uv run -m package.method
 ```
 
-### Using pip with `uv`
-
-Although `uv` supports native `pip` functionality, we recommend using the `uv add` method for consistency:
-
-```sh
-uv pip install package
-```
-
 ### Using `pyproject.toml`
 
-If you prefer to skip the `add` commands, you can set up the project directly with a `pyproject.toml` file. Here’s an example:
+If you prefer to skip the `add` commands, you can set up the project directly with a `pyproject.toml` file. Here's an example:
 
 ```toml
 [project]
@@ -52,16 +58,13 @@ name = "example"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "drivers",
-    "qcodes-contrib-drivers>=0.23.0",
     "qcutils",
 ]
 
 [tool.uv.sources]
-qcutils = { git = "https://gitlab.com/squad-lab/qcutils" }
-drivers = { git = "https://gitlab.com/squad-lab/measurements/drivers" }
+qcutils = { git = "https://gitlab.com/squad-lab/qcutils.git" }
 ```
 
 After updating the `pyproject.toml` file, you can sync the dependencies with:
@@ -74,16 +77,20 @@ This will automatically fetch and install the required packages.
 
 ## Measurement
 
-For an example of using `qcutils` for a measurement, refer to [example.py](example.py). API documentation is currently available in the code itself.
+For complete measurement scripts, see the [examples](https://gitlab.com/squad-lab/qcutils/-/tree/main/examples) directory.
 
 ### Live & Disk Format
 
 `qcutils` uses a split data path:
 
-- Live plotting/streaming data: In-memory Zarr (via `zarr.MemoryStore`)
-- Persisted measurement output on disk: NetCDF4 (`.nc`)
+- Live visualization: in-memory Zarr snapshots published through
+  [`qimchi-connect`](https://gitlab.com/squad-lab/qimchi-connect), with a
+  temporary disk checkpoint for recovery
+- Completed measurement: a netCDF (`.nc`) file in the configured data directory
 
-For live sessions, the measurement is available via `memory://<measurement_id>` in Qimchi, while it is running, and the corresponding saved file path points to the `.nc` file in the measurement directory.
+Qimchi discovers a QCUtils measurement automatically while it runs. After a
+successful final export, QCUtils removes the temporary Zarr checkpoint and the
+netCDF file remains as the measurement record.
 
 ## Development
 
@@ -94,7 +101,8 @@ git clone https://gitlab.com/squad-lab/qcutils
 Navigate into the cloned directory and install the package in development mode:
 ```sh
 cd qcutils
-uv add --dev .
+uv sync --extra dev
+uv run pre-commit install
 ```
 
 ## Authors
