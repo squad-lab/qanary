@@ -5,6 +5,7 @@
 [![coverage](https://gitlab.com/squad-lab/qanary/badges/main/coverage.svg?key_text=coverage&key_width=64)](https://gitlab.com/squad-lab/qanary/-/jobs)
 [![latest release](https://gitlab.com/squad-lab/qanary/-/badges/release.svg?key_text=release&key_width=54)](https://gitlab.com/squad-lab/qanary/-/releases)
 [![PyPI version](https://img.shields.io/pypi/v/qanary.svg)](https://pypi.org/project/qanary/)
+[![documentation](https://img.shields.io/badge/docs-qanary.squad--lab.org-blue.svg)](https://qanary.squad-lab.org/)
 
 Qanary simplifies measurement workflows and replaces QCoDeS for handling measurements.
 
@@ -114,3 +115,5 @@ uv run pre-commit install
 ## Authors
 
 - Spandan Anupam: [s.anupam@fz-juelich.de](mailto:s.anupam@fz-juelich.de)
+- Simon Schreibing: [s.schreibing@fz-juelich.de](mailto:s.schreibing@fz-juelich.de)
+- Jyotirmaya Shivottam: [shivottam@proton.me](mailto:shivottam@proton.me)

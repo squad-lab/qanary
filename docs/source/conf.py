@@ -56,6 +56,9 @@ html_static_path = ["_static"]  # Path to static files used for HTML output
 
 html_theme = "furo"
 html_title = "Qanary"
+# Canonical host for the published docs, so pages served from the GitLab Pages
+# URL point search engines at the custom domain.
+html_baseurl = "https://qanary.squad-lab.org/"
 # The project avatar, with its white background flood-filled to transparent so
 # it does not sit in a white box against Furo's dark sidebar, and trimmed to its
 # content so it fills the sidebar slot.

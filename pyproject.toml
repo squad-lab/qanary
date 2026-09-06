@@ -53,8 +53,9 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://gitlab.com/squad-lab/qanary"
-"Documentation" = "https://squad-lab.gitlab.io/qanary/"
+"Homepage" = "https://qanary.squad-lab.org/"
+"Documentation" = "https://qanary.squad-lab.org/"
+"Repository" = "https://gitlab.com/squad-lab/qanary"
 "Bug Tracker" = "https://gitlab.com/squad-lab/qanary/-/issues"
 "SQUAD Lab" = "https://squad-lab.org/"
 
