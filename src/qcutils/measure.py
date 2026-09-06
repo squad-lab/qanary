@@ -15,7 +15,6 @@ import numpy as np
 import xarray as xr
 import zarr
 from checksumdir import dirhash
-from git import Repo
 from qcodes.parameters import Parameter
 from qimchi_connect import (
     QCUtilsSnapshotProvider,
@@ -641,6 +640,8 @@ class Measurement:
         if not (repo_path / ".git").exists():
             logger.info("Cloning the measurement-hashes repository")
 
+            from git import Repo
+
             Repo.clone_from(
                 url="git@git.pgi.fz-juelich.de:squad-lab/hashes.git",
                 to_path=str(repo_path),
@@ -648,6 +649,11 @@ class Measurement:
                 branch="main",
                 env=dict(GIT_SSH_COMMAND=git_ssh_cmd),
             )
+
+        # Imported here, not at module scope: GitPython refuses to
+        # initialise without a git executable on PATH, which would make git a
+        # hard requirement of `import qcutils.measure` for every user.
+        from git import Repo
 
         repo = Repo(str(repo_path))
 
