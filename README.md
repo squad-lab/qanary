@@ -4,18 +4,20 @@
 [![tests](https://gitlab.com/squad-lab/qcutils/badges/main/pipeline.svg?job=pytest%3A%20%5B3.13%5D&ignore_skipped=true&key_text=tests&key_width=40)](https://gitlab.com/squad-lab/qcutils/-/pipelines?ref=main)
 [![coverage](https://gitlab.com/squad-lab/qcutils/badges/main/coverage.svg?key_text=coverage&key_width=64)](https://gitlab.com/squad-lab/qcutils/-/jobs)
 [![latest release](https://gitlab.com/squad-lab/qcutils/-/badges/release.svg?key_text=release&key_width=54)](https://gitlab.com/squad-lab/qcutils/-/releases)
+[![PyPI version](https://img.shields.io/pypi/v/qcutils.svg)](https://pypi.org/project/qcutils/)
 
 QCUtils simplifies measurement workflows and replaces QCoDeS for handling measurements.
 
 ## Installation
 
-QCUtils requires Python 3.13 and [uv](https://docs.astral.sh/uv/). uv is the
-only supported installer.
-
-QCUtils is not published on PyPI. Install it from GitLab:
+QCUtils requires Python 3.13. Install the latest release from PyPI:
 
 ```console
-uv add git+https://gitlab.com/squad-lab/qcutils.git
+uv add qcutils
+```
+
+```console
+pip install qcutils
 ```
 
 ## Preparing a measurement project
@@ -34,7 +36,7 @@ cd measurement_name
 Add QCUtils to the project with:
 
 ```sh
-uv add git+https://gitlab.com/squad-lab/qcutils.git
+uv add qcutils
 ```
 
 > [!note] NOTE  
@@ -62,9 +64,6 @@ requires-python = ">=3.13"
 dependencies = [
     "qcutils",
 ]
-
-[tool.uv.sources]
-qcutils = { git = "https://gitlab.com/squad-lab/qcutils.git" }
 ```
 
 After updating the `pyproject.toml` file, you can sync the dependencies with:

@@ -1,27 +1,19 @@
 # Installation
 
-QCUtils requires Python 3.13 and [uv](https://docs.astral.sh/uv/). uv is the
-only supported installer.
-
-QCUtils is not published on PyPI. Install it from GitLab:
+QCUtils requires Python 3.13. Install the latest release from PyPI:
 
 ```console
-uv add git+https://gitlab.com/squad-lab/qcutils.git
-```
-
-Or declare it in a project's `pyproject.toml`:
-
-```toml
-[project]
-dependencies = ["qcutils"]
-
-[tool.uv.sources]
-qcutils = { git = "https://gitlab.com/squad-lab/qcutils.git" }
+uv add qcutils
 ```
 
 ```console
-uv sync
+pip install qcutils
 ```
+
+QCUtils pulls in its QCoDeS, Zurich Instruments, live-visualization
+([`qimchi-connect`](https://gitlab.com/squad-lab/qimchi-connect)) and instrument
+driver ([`qcdrivers`](https://gitlab.com/squad-lab/qcdrivers)) dependencies, so
+there is no need to add them separately.
 
 ## Development installation
 

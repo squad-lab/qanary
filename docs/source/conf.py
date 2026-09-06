@@ -79,6 +79,12 @@ html_theme_options = {
             "html": "",
             "class": "fa-brands fa-gitlab",
         },
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/qcutils/",
+            "html": "",
+            "class": "fa-brands fa-python",
+        },
     ],
 }
 
