@@ -10,6 +10,13 @@ uv add qanary
 pip install qanary
 ```
 
+## Migrating from QCUtils
+
+Qanary is the renamed successor to QCUtils. Replace the `qcutils` dependency
+with `qanary`, change imports from `qcutils...` to `qanary...`, and rename
+`QCUTILS_HOME` to `QANARY_HOME`. The default application directory has likewise
+changed from `~/.qcutils` to `~/.qanary`.
+
 Qanary pulls in its QCoDeS, Zurich Instruments, live-visualization
 ([`qimchi-connect`](https://gitlab.com/squad-lab/qimchi-connect)) and instrument
 driver ([`qcdrivers`](https://gitlab.com/squad-lab/qcdrivers)) dependencies, so

@@ -20,6 +20,13 @@ uv add qanary
 pip install qanary
 ```
 
+## Migrating from QCUtils
+
+Qanary is the renamed successor to QCUtils. Replace the `qcutils` dependency
+with `qanary`, change imports from `qcutils...` to `qanary...`, and rename
+`QCUTILS_HOME` to `QANARY_HOME`. The default application directory has likewise
+changed from `~/.qcutils` to `~/.qanary`.
+
 ## Preparing a measurement project
 
 We manage and run our measurements using the tool `uv`. To get started, follow the official [Astral installation guide](https://astral.sh/uv/) to install `uv`. It handles virtual environments and package dependencies for you, simplifying Python package management.
