@@ -1,5 +1,5 @@
 """
-Tests for ``qcutils.measure`` -- the station, the measurement and the run.
+Tests for ``qanary.measure`` -- the station, the measurement and the run.
 
 ``Measurement.run`` is where everything else meets: it snapshots the
 instruments, allocates the dataset, seeds the in-memory and on-disk Zarr
@@ -33,8 +33,8 @@ from qimchi_connect import close_live_measurement, get_live_registration
 from qimchi_connect import registry as live_db
 from qimchi_connect import server as live_server
 
-from qcutils import measure
-from qcutils.measure import (
+from qanary import measure
+from qanary.measure import (
     Measurement,
     Station,
     _find_available_port,
@@ -43,7 +43,7 @@ from qcutils.measure import (
     _unregister_memory_store,
     run,
 )
-from qcutils.sweep import Sweep
+from qanary.sweep import Sweep
 
 
 class TestSanitizeForJson:
@@ -140,7 +140,7 @@ class TestFindAvailablePort:
             def bind(self, address):
                 raise OSError("address in use")
 
-        monkeypatch.setattr("qcutils.measure.socket.socket", lambda *a: AlwaysBusy())
+        monkeypatch.setattr("qanary.measure.socket.socket", lambda *a: AlwaysBusy())
 
         assert _find_available_port(8765, max_attempts=3) == 8765
 
@@ -242,7 +242,7 @@ class TestLiveStoreRegistry:
         """
         Live plotting is optional, so failure to start the server must not stop
         the measurement. Qimchi Connect removes the unused provider and writes
-        no discovery row; the QCUtils wrapper reports the failure as port zero.
+        no discovery row; the Qanary wrapper reports the failure as port zero.
 
         """
         with (
@@ -603,7 +603,7 @@ class TestDatasetAllocation:
 
         """
         measurement.fridge_name = ""
-        monkeypatch.setattr("qcutils.measure.socket.gethostname", lambda: "standalone")
+        monkeypatch.setattr("qanary.measure.socket.gethostname", lambda: "standalone")
 
         measurement._make_dataset([Sweep(gates.x, 0.0, 1.0, num=2)], [signal])
 
@@ -737,7 +737,7 @@ class TestFinalizeDiskArtifacts:
         quiet_registry_maintenance,
     ):
         """
-        Qimchi Connect can record a measurement without a disk path, so QCUtils
+        Qimchi Connect can record a measurement without a disk path, so Qanary
         must guarantee its own runs have one. The run seeds a ``.zarr`` store
         before publishing and advertises that path.
 
@@ -838,7 +838,7 @@ class TestFinalizeDiskArtifacts:
         self, measurement, seeded, monkeypatch, caplog
     ):
         monkeypatch.setattr(
-            "qcutils.measure.shutil.rmtree",
+            "qanary.measure.shutil.rmtree",
             lambda *a, **k: (_ for _ in ()).throw(OSError("locked")),
         )
 
@@ -873,7 +873,7 @@ class TestPushGitlab:
         work = tmp_path / "hashes"
         repo = Repo.init(work)
         with repo.config_writer() as config:
-            config.set_value("user", "name", "qcutils tests")
+            config.set_value("user", "name", "qanary tests")
             config.set_value("user", "email", "tests@example.invalid")
         repo.create_remote("origin", str(origin))
 
@@ -1024,7 +1024,7 @@ class TestRun:
         assert gates.name in json.loads(attrs["Instruments Snapshot"])
         assert "x_gate" in json.loads(attrs["Parameters Snapshot"])
         assert json.loads(attrs["Sweeps"])["Gate x"]["Number of Points"] == 3
-        assert attrs["Requirements"] == "qcutils==0.8.0\n"
+        assert attrs["Requirements"] == "qanary==0.8.0\n"
 
     def test_a_snapshot_that_is_not_serialisable_is_sanitised(
         self, measurement, gates, signal
@@ -1136,7 +1136,7 @@ class TestRun:
 
         """
         with patch(
-            "qcutils.measure._stepper", side_effect=lambda dataset, **kw: dataset
+            "qanary.measure._stepper", side_effect=lambda dataset, **kw: dataset
         ):
             with pytest.raises(RuntimeError, match="0/3 points acquired"):
                 measurement.run(

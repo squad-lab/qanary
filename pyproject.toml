@@ -1,10 +1,10 @@
 [project]
-name = "qcutils"
+name = "qanary"
 version = "0.9.0"
 authors = [
   { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
   { name="Simon Schreibing", email="s.schreibing@fz-juelich.de" },
-  { name="Jyotirmaya Shivottam", email="j.shivottam@fz-juelich.de" },
+  { name="Jyotirmaya Shivottam", email="shivottam@proton.me" },
 ]
 description = "Sweep and measurement utilities for qcodes"
 readme = "README.md"
@@ -15,9 +15,11 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
-keywords = ["qcodes"]
+keywords = ["qanary", "qcodes", "quantum", "measurement", "sweep", "xarray"]
 dependencies = [
+  # TODO: Check which deps are core and which are for optional features.
   "checksumdir>=1.2.0",
   "gitpython>=3.1.44",
   "qcodes>=0.59.0",
@@ -33,8 +35,8 @@ dependencies = [
   "pyvisa>=1.14.1",
   "pyvisa-py>=0.7.2",
   "zeroconf>=0.147.2",
-  "qimchi-connect>=0.1.0",
-  "qcdrivers>=0.1.0",
+  "qimchi-connect>=0.2.0",
+  "qcdrivers>=0.2.0",
 ]
 
 [project.optional-dependencies]
@@ -51,12 +53,14 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://gitlab.com/squad-lab/qcutils"
-"Bug Tracker" = "https://gitlab.com/squad-lab/qcutils/-/issues"
+"Homepage" = "https://gitlab.com/squad-lab/qanary"
+"Documentation" = "https://squad-lab.gitlab.io/qanary/"
+"Bug Tracker" = "https://gitlab.com/squad-lab/qanary/-/issues"
+"SQUAD Lab" = "https://squad-lab.org/"
 
 [dependency-groups]
 dev = [
-    "qcutils",
+    "qanary",
 ]
 docs = [
     "sphinx>=8.2",
@@ -72,17 +76,17 @@ docs = [
 package = true
 
 [tool.uv.sources]
-qcutils = { workspace = true }
+qanary = { workspace = true }
 
+# Hatchling, like qimchi-connect and qcdrivers. poetry-core collapses
+# `authors` to the first entry, so everyone but the first author disappears
+# from the published metadata.
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
 
-[tool.poetry]
-package-mode = true
-packages = [
-    { include = "qcutils", from = "src" },
-]
+[tool.hatch.build.targets.wheel]
+packages = ["src/qanary"]
 
 [tool.semantic_release]
 # NOTE: Commit-based versioning. CI owns the version literal below; do not bump it by
@@ -92,7 +96,7 @@ commit_message = "chore(release): v{version}\n\n[skip ci]"
 commit_author = "Janitor <squad@fz-juelich.de>"
 build_command = "uv build"
 tag_format = "v{version}"
-# Without `major_on_zero`, the first `feat:` commit after 0.8.0 releases 1.0.0.
+# Keep pre-1.0 breaking changes on the minor line: v0.9.0 becomes v0.10.0.
 major_on_zero = false
 allow_zero_version = true
 
@@ -108,7 +112,7 @@ prerelease = true
 prerelease_token = "rc"
 
 # Without this, python-semantic-release assumes GitHub and every commit link it
-# writes into CHANGELOG.md points at github.com/squad-lab/qcutils -- a 404.
+# writes into CHANGELOG.md points at github.com/squad-lab/qanary -- a 404.
 [tool.semantic_release.remote]
 type = "gitlab"
 domain = "gitlab.com"
@@ -130,7 +134,7 @@ select = ["E", "F", "I"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["qcutils"]
+known-first-party = ["qanary"]
 
 [tool.ruff.format]
 line-ending = "lf"
@@ -139,7 +143,7 @@ line-ending = "lf"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["src/qcutils"]
+source = ["src/qanary"]
 branch = true
 
 [tool.coverage.report]

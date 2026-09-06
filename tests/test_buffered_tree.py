@@ -25,7 +25,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from qcutils.buffered.sweep import (
+from qanary.buffered.sweep import (
     _abort_instruments,
     _arm_instruments,
     _buffered_sweep_progress_info,

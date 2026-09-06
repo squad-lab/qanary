@@ -5,9 +5,9 @@ from qcdrivers.keysight.dmms import Keysight34461A
 from qcodes.instrument import Instrument
 from qcodes_contrib_drivers.drivers.QDevil.QDAC2 import QDac2
 
-from qcutils import measure
-from qcutils.measure import Station
-from qcutils.sweep import Sweep
+from qanary import measure
+from qanary.measure import Station
+from qanary.sweep import Sweep
 
 Instrument.close_all()
 dmm1 = Keysight34461A(

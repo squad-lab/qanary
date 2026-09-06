@@ -1,4 +1,4 @@
-## QCUtils Changelog
+## Qanary Changelog
 
 <!-- version list -->
 
@@ -140,4 +140,3 @@
 - Spandan Anupam
 - Simon Schreibing
 - Jyotirmaya Shivottam
-- Julius

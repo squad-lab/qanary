@@ -7,13 +7,13 @@ from typing import Union
 import xarray as xr
 
 # Local imports
-from qcutils.logger import get_logger
+from qanary.logger import get_logger
 
 # Public API
 __all__ = [
     "load",
     "convert",
-    "QCUtilsDatasetError",
+    "QanaryDatasetError",
     "DatasetNotFoundError",
     "ZarrStoreNotFoundError",
     "DatasetLoadError",
@@ -25,38 +25,38 @@ logger = get_logger(__name__)
 
 
 # Custom exceptions
-class QCUtilsDatasetError(Exception):
-    """Base class for all dataset-related errors in qcutils."""
+class QanaryDatasetError(Exception):
+    """Base class for all dataset-related errors in qanary."""
 
 
-class DatasetNotFoundError(QCUtilsDatasetError):
+class DatasetNotFoundError(QanaryDatasetError):
     """Raised when the requested dataset file or directory does not exist."""
 
 
-class ZarrStoreNotFoundError(QCUtilsDatasetError):
+class ZarrStoreNotFoundError(QanaryDatasetError):
     """Raised when the expected .zarr store directory cannot be found."""
 
 
-class DatasetLoadError(QCUtilsDatasetError):
+class DatasetLoadError(QanaryDatasetError):
     """Raised when xarray cannot open the dataset."""
 
 
-class DatasetConvertError(QCUtilsDatasetError):
+class DatasetConvertError(QanaryDatasetError):
     """Raised when conversion from .zarr to .nc fails."""
 
 
 # Public helpers
 def load(path: Union[str, Path]) -> xr.Dataset:
     """
-    Load a qcutils measurement dataset.
+    Load a qanary measurement dataset.
 
     Wraps :func:`xarray.load_dataset` with engine selection appropriate for
-    QCUtils-generated files (automatic selection for ``.nc`` and the Zarr
+    Qanary-generated files (automatic selection for ``.nc`` and the Zarr
     engine for ``.zarr``) and clear error messages.
 
     Args:
         path (Union[str, Path]): Path to a ``.nc`` file or ``.zarr`` directory
-            created by a QCUtils :class:`~qcutils.measure.Measurement` run.
+            created by a Qanary :class:`~qanary.measure.Measurement` run.
 
     Returns:
         xr.Dataset: The fully-loaded (in-memory) xarray dataset.
@@ -83,7 +83,7 @@ def load(path: Union[str, Path]) -> xr.Dataset:
     except Exception as exc:
         raise DatasetLoadError(f"Failed to load dataset from '{path}': {exc}") from exc
 
-    logger.info(f"Loaded dataset: {list(ds.data_vars)} | dims={dict(ds.dims)}")
+    logger.info(f"Loaded dataset: {list(ds.data_vars)} | dims={dict(ds.sizes)}")
     return ds
 
 

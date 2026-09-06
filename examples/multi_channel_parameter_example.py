@@ -1,6 +1,6 @@
 from qcdrivers.squad import ShellInstrument
 
-from qcutils.parameters import MultiChannelParameter
+from qanary.parameters import MultiChannelParameter
 
 dummy = ShellInstrument("dummy", {})
 dummy2 = ShellInstrument("dummy2", {})

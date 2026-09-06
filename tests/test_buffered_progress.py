@@ -27,8 +27,8 @@ from unittest.mock import patch
 
 import numpy as np
 
-from qcutils.buffered.sweep import _buffered_sweep_progress_info
-from qcutils.sweep import _BufferedProgress, _stepper
+from qanary.buffered.sweep import _buffered_sweep_progress_info
+from qanary.sweep import _BufferedProgress, _stepper
 
 
 def sweep(points, delay):
@@ -165,7 +165,7 @@ class BufferedStepperProgressTests(TestCase):
         progress = _BufferedProgress(bar, points=10, estimated_duration=1.0)
         progress._stop_event = FakeStopEvent()
 
-        with patch("qcutils.sweep.monotonic", side_effect=(0.0, 0.5)):
+        with patch("qanary.sweep.monotonic", side_effect=(0.0, 0.5)):
             progress._run()
 
         self.assertEqual(bar.n, 5)
@@ -273,7 +273,7 @@ class BufferedProgressSmoothnessTests(TestCase):
         step = duration / ticks
         clock = [0.0] + [step * (i + 1) for i in range(ticks)]
 
-        with patch("qcutils.sweep.monotonic", side_effect=clock):
+        with patch("qanary.sweep.monotonic", side_effect=clock):
             progress._run()
 
         return bar, progress
@@ -315,7 +315,7 @@ class BufferedProgressSmoothnessTests(TestCase):
                 stop_event = ScriptedStopEvent(ticks=0)
                 progress._stop_event = stop_event
 
-                with patch("qcutils.sweep.monotonic", return_value=0.0):
+                with patch("qanary.sweep.monotonic", return_value=0.0):
                     progress._run()
 
                 self.assertEqual(len(stop_event.timeouts), 1)
@@ -329,7 +329,7 @@ class BufferedProgressSmoothnessTests(TestCase):
         progress._stop_event = ScriptedStopEvent(5)
         clock = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
 
-        with patch("qcutils.sweep.monotonic", side_effect=clock):
+        with patch("qanary.sweep.monotonic", side_effect=clock):
             progress._run()
 
         self.assertEqual(bar.n, 9)

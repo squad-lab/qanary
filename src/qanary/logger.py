@@ -1,5 +1,5 @@
 """
-Centralized logging configuration for qcutils.
+Centralized logging configuration for qanary.
 
 """
 
@@ -27,7 +27,7 @@ def _setup_logging(
     use_detailed_format: bool = False,
 ) -> None:
     """
-    Configure logging for qcutils.
+    Configure logging for qanary.
 
     Args:
         level: Logging level (e.g., logging.INFO, logging.DEBUG)
@@ -38,13 +38,13 @@ def _setup_logging(
     global _LOGGING_CONFIGURED
 
     if _LOGGING_CONFIGURED:
-        logging.getLogger("qcutils").setLevel(level)
+        logging.getLogger("qanary").setLevel(level)
         return
 
     if format_string is None:
         format_string = DETAILED_FORMAT if use_detailed_format else DEFAULT_FORMAT
 
-    # Configure root logger for qcutils
+    # Configure root logger for qanary
     logging.basicConfig(
         format=format_string,
         level=level,
@@ -52,8 +52,8 @@ def _setup_logging(
         force=True,
     )
 
-    qcutils_logger = logging.getLogger("qcutils")
-    qcutils_logger.setLevel(level)
+    qanary_logger = logging.getLogger("qanary")
+    qanary_logger.setLevel(level)
 
     # Ensure the websockets library logs only warnings or above to avoid "connection open" spam
     logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -63,7 +63,7 @@ def _setup_logging(
 
 def get_logger(name: str) -> logging.Logger:
     """
-    Get a logger instance for a qcutils module.
+    Get a logger instance for a qanary module.
 
     Args:
         name: Logger name (typically __name__ from the calling module)

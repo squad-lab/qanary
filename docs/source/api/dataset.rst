@@ -3,6 +3,6 @@ Dataset
 
 Load completed netCDF measurements and recover explicitly staged Zarr stores.
 
-.. automodule:: qcutils.dataset
+.. automodule:: qanary.dataset
     :members:
     :show-inheritance:

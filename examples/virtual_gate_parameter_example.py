@@ -2,8 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from qcdrivers.squad import ShellInstrument
 
-from qcutils.measure import Station
-from qcutils.parameters import VirtualGate
+from qanary.measure import Station
+from qanary.parameters import VirtualGate
 
 dummy = ShellInstrument("dummy", {})
 dummy2 = ShellInstrument("dummy2", {})

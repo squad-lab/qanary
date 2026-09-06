@@ -1,5 +1,5 @@
 """
-Tests for ``qcutils.dataset``.
+Tests for ``qanary.dataset``.
 
 These are the functions a user reaches for after a measurement, often after
 something went wrong with it, so the error paths carry as much weight as the
@@ -17,11 +17,11 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from qcutils.dataset import (
+from qanary.dataset import (
     DatasetConvertError,
     DatasetLoadError,
     DatasetNotFoundError,
-    QCUtilsDatasetError,
+    QanaryDatasetError,
     ZarrStoreNotFoundError,
     convert,
     load,
@@ -217,7 +217,7 @@ def test_every_dataset_error_shares_one_base_class():
         DatasetLoadError,
         DatasetConvertError,
     ):
-        assert issubclass(error, QCUtilsDatasetError)
+        assert issubclass(error, QanaryDatasetError)
 
 
 def test_an_undeletable_temporary_file_does_not_mask_the_write_error(

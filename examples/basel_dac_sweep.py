@@ -8,9 +8,9 @@ from qcdrivers.basel.dacs.dacs import BaselDac2
 from qcdrivers.buffered.basel import NodeBaselDAC
 from qcodes.instrument import Instrument
 
-from qcutils import measure
-from qcutils.measure import Station
-from qcutils.sweep import Sweep
+from qanary import measure
+from qanary.measure import Station
+from qanary.sweep import Sweep
 
 # %%
 

@@ -1,5 +1,5 @@
 """
-Tests for the sweep definitions and the parameter movers in ``qcutils.sweep``.
+Tests for the sweep definitions and the parameter movers in ``qanary.sweep``.
 
 A ``Sweep`` is pure arithmetic -- it turns a start, a stop and either a step
 count or a step size into the array of setpoints a measurement will visit --
@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from qcutils.sweep import (
+from qanary.sweep import (
     CircularSweep,
     SegmentedSweep,
     Sweep,
@@ -340,7 +340,7 @@ class TestRampdown:
 
         """
         recorded: list[float] = []
-        monkeypatch.setattr("qcutils.sweep.sleep", recorded.append)
+        monkeypatch.setattr("qanary.sweep.sleep", recorded.append)
         return recorded
 
     def test_brings_a_single_parameter_to_zero(self, gates, dwells):

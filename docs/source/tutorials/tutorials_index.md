@@ -1,31 +1,43 @@
 # Tutorials
 
-Step-by-step introductions to running measurements with QCutils.
+These tutorials introduce Qanary through the [example
+scripts](https://gitlab.com/squad-lab/qanary/-/tree/main/examples). Each page
+focuses on the part of an example that is useful in a real measurement: how to
+model the sweep, arrange buffered instruments, and choose the relevant timing
+and trigger settings.
 
-:::{note}
-These pages are yet to be properly written. The planned set is a first measurement,
-sweeps, loading data, and buffered measurements.
-:::
+The parameter tutorials run without hardware. The buffered tutorials use lab
+instruments and are intended as starting points; update addresses, channels,
+wiring, limits, and data paths before running them.
+
+## Parameters
 
 ```{toctree}
 :maxdepth: 1
+
+multi_channel_parameters
+virtual_gates
 ```
 
-## Examples
+## Buffered measurements
 
-:::{note}
-These files are reference examples for now. They will be edited into
-step-by-step tutorials later.
-:::
+Buffered measurements let the instruments generate and acquire a complete
+block of points without a Python round trip at every setpoint. Start with the
+{doc}`buffered_basel_dac` tutorial for a single node, then add an acquiring
+instrument with {doc}`buffered_basel_mfli` or {doc}`buffered_basel_uhfli`.
 
-- [`basel_dac_sweep.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/basel_dac_sweep.py)
-- [`buffered_basel_transistor_test_mfli.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_basel_transistor_test_mfli.py)
-- [`buffered_basel_transistor_test_uhfli.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_basel_transistor_test_uhfli.py)
-- [`buffered_basel_with_mfli.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_basel_with_mfli.py)
-- [`buffered_basel_with_uhfli.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_basel_with_uhfli.py)
-- [`buffered_qdac_with_keysight_dmm.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_qdac_with_keysight_dmm.py)
-- [`buffered_uhfli_sweeps.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/buffered_uhfli_sweeps.py)
-- [`multi_channel_parameter_example.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/multi_channel_parameter_example.py)
-- [`qdac_dmm_mfli_example.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/qdac_dmm_mfli_example.py)
-- [`time_trace_lockin.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/time_trace_lockin.py)
-- [`virtual_gate_parameter_example.py`](https://gitlab.com/squad-lab/qcutils/-/blob/main/examples/virtual_gate_parameter_example.py)
+See {doc}`../api/buffered/buffered_index` for the complete sweep-tree contract.
+
+```{toctree}
+:maxdepth: 1
+
+buffered_basel_dac
+buffered_basel_mfli
+buffered_basel_uhfli
+buffered_transistor_mfli
+buffered_transistor_uhfli
+buffered_uhfli_sweeper
+buffered_qdac_dmm
+buffered_qdac_mfli
+buffered_time_traces
+```
