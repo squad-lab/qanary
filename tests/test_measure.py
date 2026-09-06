@@ -1111,8 +1111,14 @@ class TestRun:
         self, measurement, gates
     ):
         readings = iter([1.0, 2.0])
+        # snapshot_get=False so the station snapshot in `run` does not consume a
+        # reading -- only the sweep should draw from the iterator.
         flaky = Parameter(
-            "signal", unit="A", instrument=gates, get_cmd=lambda: next(readings)
+            "signal",
+            unit="A",
+            instrument=gates,
+            get_cmd=lambda: next(readings),
+            snapshot_get=False,
         )
 
         with pytest.raises(StopIteration):

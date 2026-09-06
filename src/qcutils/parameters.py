@@ -1,8 +1,8 @@
 from typing import Sequence
 
 import numpy as np
-from qcodes import Parameter
 from qcodes import validators as vals
+from qcodes.parameters import Parameter
 
 # Public API
 __all__ = [
