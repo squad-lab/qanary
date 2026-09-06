@@ -1,7 +1,7 @@
 from qcodes.parameters import Parameter
 
 
-def add(self, other: Parameter):
+def _add(self, other: Parameter):
     """Add functionality for qcodes Parameter"""
     assert self.unit == other.unit, "Units must be the same"
 
@@ -14,7 +14,7 @@ def add(self, other: Parameter):
     return add_param
 
 
-def sub(self, other: Parameter):
+def _sub(self, other: Parameter):
     """Subtract functionality for qcodes Parameter"""
     assert self.unit == other.unit, "Units must be the same"
 
@@ -27,7 +27,7 @@ def sub(self, other: Parameter):
     return sub_param
 
 
-def mul(self, other: Parameter):
+def _mul(self, other: Parameter):
     """Multiply functionality for qcodes Parameter"""
 
     def mul_func():
@@ -41,7 +41,7 @@ def mul(self, other: Parameter):
     return mul_param
 
 
-def truediv(self, other: Parameter):
+def _truediv(self, other: Parameter):
     """Division functionality for qcodes Parameter"""
 
     def truediv_func():
@@ -55,7 +55,7 @@ def truediv(self, other: Parameter):
     return truediv_param
 
 
-def power(self, other: Parameter):
+def _power(self, other: Parameter):
     """Power functionality for qcodes Parameter"""
 
     def pow_func():
@@ -69,8 +69,8 @@ def power(self, other: Parameter):
     return pow_param
 
 
-Parameter.__add__ = add
-Parameter.__sub__ = sub
-Parameter.__mul__ = mul
-Parameter.__truediv__ = truediv
-Parameter.__pow__ = power
+Parameter.__add__ = _add
+Parameter.__sub__ = _sub
+Parameter.__mul__ = _mul
+Parameter.__truediv__ = _truediv
+Parameter.__pow__ = _power

@@ -8,7 +8,18 @@ import xarray as xr
 
 # Local imports
 from qcutils.logger import get_logger
-from qcutils.shared import live_db
+
+# Public API
+__all__ = [
+    "load",
+    "convert",
+    "QCUtilsDatasetError",
+    "DatasetNotFoundError",
+    "ZarrStoreNotFoundError",
+    "DatasetLoadError",
+    "DatasetConvertError",
+]
+
 
 logger = get_logger(__name__)
 
@@ -40,12 +51,12 @@ def load(path: Union[str, Path]) -> xr.Dataset:
     Load a qcutils measurement dataset.
 
     Wraps :func:`xarray.load_dataset` with engine selection appropriate for
-    qcutils-generated files (.nc → netCDF4, .zarr → zarr) and clear error
-    messages.
+    QCUtils-generated files (automatic selection for ``.nc`` and the Zarr
+    engine for ``.zarr``) and clear error messages.
 
     Args:
-        path (Union[str, Path]): Path to a ``.nc`` file **or** a ``.zarr`` directory created by a
-            qcutils :class:`~qcutils.measure.Measurement` run.
+        path (Union[str, Path]): Path to a ``.nc`` file or ``.zarr`` directory
+            created by a QCUtils :class:`~qcutils.measure.Measurement` run.
 
     Returns:
         xr.Dataset: The fully-loaded (in-memory) xarray dataset.
@@ -63,13 +74,9 @@ def load(path: Union[str, Path]) -> xr.Dataset:
             "Check that the path is correct and the measurement has finished."
         )
 
-    # Determine the xarray engine from the file extension / directory type.
-    if path.suffix == ".zarr" or (path.is_dir() and path.suffix == ".zarr"):
-        engine = "zarr"
-    else:
-        engine = "netcdf4"
+    engine = "zarr" if path.suffix == ".zarr" else None
 
-    logger.info(f"Loading dataset from '{path}' (engine={engine})")
+    logger.info(f"Loading dataset from '{path}' (engine={engine or 'auto'})")
 
     try:
         ds = xr.load_dataset(path, engine=engine)
@@ -84,10 +91,10 @@ def convert(nc_path: Union[str, Path], *, overwrite: bool = False) -> Path:
     """
     Convert the paired ``.zarr`` store for a measurement to netCDF.
 
-    qcutils writes live data to a ``.zarr`` directory alongside the final
-    ``.nc`` file.  At the end of a measurement run the framework converts the
-    zarr store to netCDF and deletes it.  If that step failed (e.g. process
-    crash) this function can perform the conversion manually.
+    A normal run exports its current in-memory dataset directly to netCDF and
+    removes its temporary live checkpoint. If recovery instead leaves a
+    ``.zarr`` directory beside the intended ``.nc`` file, this function can
+    complete that conversion manually.
 
     Expected layout on disk::
 
@@ -104,9 +111,10 @@ def convert(nc_path: Union[str, Path], *, overwrite: bool = False) -> Path:
         Path: Resolved absolute path to the written ``.nc`` file.
 
     Raises:
-        ZarrStoreNotFoundError: If the ``.zarr`` directory does not exist next to *nc_path*.
-        DatasetConvertError: If *nc_path* already exists and *overwrite* is *False*,
-            or if the zarr→netCDF conversion fails for any other reason.
+        ZarrStoreNotFoundError: If the ``.zarr`` directory does not exist next
+            to *nc_path*.
+        DatasetConvertError: If *nc_path* already exists and *overwrite* is
+            *False*, or if conversion fails for another reason.
 
     """
     nc_path = Path(nc_path).resolve()
@@ -128,7 +136,7 @@ def convert(nc_path: Union[str, Path], *, overwrite: bool = False) -> Path:
         )
 
     # Load zarr → write netCDF
-    logger.info(f"Converting '{zarr_path}' → '{nc_path}' …")
+    logger.info(f"Converting '{zarr_path}' -> '{nc_path}'")
 
     try:
         ds = xr.load_dataset(zarr_path, engine="zarr")
@@ -166,28 +174,3 @@ def convert(nc_path: Union[str, Path], *, overwrite: bool = False) -> Path:
         )
 
     return nc_path
-
-
-def cleanup_old_measurements(days: int = 7) -> int:
-    """
-    Remove stale records from the live-measurement SQLite database.
-
-    Thin wrapper around :func:`qcutils.shared.live_db.cleanup_old_measurements`
-    that initialises the database first if it has not been used yet, and logs
-    the result at INFO level.
-
-    Args:
-        days (int): Remove ended measurements whose ``ended_at`` timestamp is older than
-            this many days. Defaults to 7.
-
-    Returns:
-        int: Number of database records deleted.
-
-    """
-    live_db.init_database()
-    deleted = live_db.cleanup_old_measurements(days=days)
-    logger.info(
-        f"Cleaned up {deleted} measurement record(s) older than {days} day(s) "
-        "from the live-measurement database."
-    )
-    return deleted

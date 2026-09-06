@@ -1,5 +1,20 @@
+"""
+Buffered sweep nodes for specific instruments.
+
+.. deprecated::
+    These instrument-specific node classes are moving to the ``drivers``
+    package. They remain importable from here for now, but no new node
+    classes should be added here.
+
+    Nothing inside QCUtils imports this module. It exists for measurement
+    scripts, which can change their imports once ``drivers`` provides these
+    classes.
+
+"""
+
+import warnings
 from time import sleep, time
-from typing import Sequence, Union
+from typing import Sequence
 
 import numpy as np
 from pyvisa.constants import StatusCode
@@ -9,14 +24,37 @@ from qcodes.parameters import Parameter
 
 from qcutils.sweep import Sweep
 
+warnings.warn(
+    "qcutils.buffered.instruments is deprecated and will move to the `drivers` "
+    "package. Import the node classes from there once it provides them.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+# Public API: the node classes a buffered sweep tree is built from.
+__all__ = [
+    "BufferedNodeBase",
+    "NodeMFLI",
+    "NodeUHFLI",
+    "NodeKeysightDMM",
+    "NodeQDAC2",
+    "NodeKeysightVNA",
+    "NodeBaselDAC",
+    "NodeDelay",
+]
+
 
 class BufferedNodeBase:
     def __init__(self, inst: Instrument) -> None:
         """
-        Base class for buffered sweep nodes. This class is a node of the buffered sweep tree. Can be used in three ways:
-        1. As a node in a buffered sweep tree with a sweep and a dependent, where the device is both sweeping and measuring.
-        2. As a node in a buffered sweep tree with a sweep and no dependent, where the device is only sweeping.
-        3. As a node in a buffered sweep tree with no sweep and a dependent, where the device is only measuring.
+        Initialize a buffered-tree node around an instrument.
+
+        A node may drive sweeps, acquire dependents, or do both. Concrete node
+        classes implement the operations their hardware supports.
+
+        Args:
+            inst (Instrument): QCoDeS instrument controlled by this node.
+
         """
         self.buffered = True
         self.toplevel = False
@@ -27,12 +65,18 @@ class BufferedNodeBase:
         self.endnode = True
         self.sweepnode = True
 
-    def _process_sweeps(self, sweep: Sweep | Sequence[Sweep]):
+    def _process_sweeps(self, sweep: Sweep | Sequence[Sweep]) -> None:
         """
-        Process sweeps
+        Normalize and validate the sweeps assigned to this node.
 
         Args:
-            sweep (Sweep): The sweep object to be used in the buffered sweep tree.
+            sweep (Sweep | Sequence[Sweep]): One or two sweeps belonging to the
+                same instrument and using the same delay.
+
+        Raises:
+            AssertionError: If the sweeps use different instruments or delays,
+                or more than two dimensions are supplied.
+
         """
         if not isinstance(sweep, Sequence):
             self.sweeps = [sweep]
@@ -62,41 +106,32 @@ class BufferedNodeBase:
         self.endnode = False
         self.dims = len(self.sweeps)
 
-    def _process_dependents(self, dependent: Parameter | Sequence[Parameter]):
+    def _process_dependents(self, dependent: Parameter | Sequence[Parameter]) -> None:
         """
-        Process dependents
+        Normalize one or more dependent parameters to a sequence.
 
         Args:
-            dependent (Parameter | Sequence[Parameter]): The dependent object to be used in the buffered sweep tree.
+            dependent (Parameter | Sequence[Parameter]): Parameters acquired by
+                this node.
+
         """
         if not isinstance(dependent, Sequence):
             self.dependents = [dependent]
         else:
             self.dependents = dependent
 
-        # self.sweepnode = False
-
     def abort(self) -> None:
-        """Stop active work owned by this buffered node, if any."""
+        """Provide a no-op cleanup hook for nodes without active resources."""
 
 
 class NodeMFLI(BufferedNodeBase):
     """
-    MFLI node for a buffered sweep tree.
+    Zurich Instruments MFLI acquisition node using the LabOne DAQ module.
 
-    - Uses the LabOne DAQ module in **hardware-trigger** mode (type=6).
-    - Exact grid acquisition with:
-        rows := number of trigger events (outer dimension)
-        cols := number of points recorded per trigger (inner dimension)
-        (choose grid mode)
+    The node uses hardware-trigger mode. For two-dimensional geometry, rows are
+    trigger events and columns are points recorded per trigger. The upstream
+    sweep node must provide a trigger pulse at least 100 microseconds wide.
 
-    Typical flow:
-        register_dependent(...)  # config + subscribe + execute()
-        ... run your QDAC sweep to generate triggers ...
-        fetch()                  # wait for completion and read data
-
-    NOTE:
-    Minimum trigger width is 1e-4s. Set the trigger width in the parent instrument accordingly.
     """
 
     def __init__(self, inst: Instrument, *args, **kwargs) -> None:
@@ -114,7 +149,7 @@ class NodeMFLI(BufferedNodeBase):
 
     def register_dependent(
         self,
-        dependent: Union[Parameter, Sequence[Parameter]],
+        dependent: Parameter | Sequence[Parameter],
         num: int | Sequence[int],
         delay: float,
         input_trigger: int = 1,
@@ -129,24 +164,35 @@ class NodeMFLI(BufferedNodeBase):
         count: int = 1,
     ) -> None:
         """
-        Configure DAQ for a hardware-triggered, and start it.
+        Configure and start a hardware-triggered DAQ acquisition.
 
         Args:
-            dependent: LabOne node(s), e.g. "demods/0/sample.r" or list thereof.
-            num: Number of points. For 2D, pass (rows, cols) where rows is the number
-                 of trigger events (outer loop) and cols the points per trigger.
-            delay: Step time (s) of the innermost sweep; DAQ duration ~ delay * cols.
-            force_trigger: If True, force a trigger to start the acquisition.
-            input_trigger: Which TrigIn (1 or 2) to use on the MFLI.
-            trigger_delay: Delay (s) between trigger and first sample (default 0).
-            tc_factor: Factor to adjust the time constant of the demodulator. The time constant is set to delay/tc_factor. (default 1)
-            grid_mode: DAQ grid mode; 1=nearest, 2=linear, 4=exact grid (default).
-            edge: Trigger edge; one of "rising", "falling", "both".
-            endless: If True, run continuous acquisition (advanced use).
-            count: Number of grids to acquire in single-shot mode (endless=False).
-        """
-        # Normalize dependents list
+            dependent (Parameter | Sequence[Parameter]): Parameters exposing a
+                Zurich Instruments ``zi_node`` path.
+            num (int | Sequence[int]): Point count, or ``(rows, columns)`` for a
+                two-dimensional acquisition.
+            delay (float): Innermost step time in seconds.
+            input_trigger (int): Trigger input number. Defaults to 1.
+            force_trigger (bool): Force a trigger after arming. Defaults to
+                False.
+            trigger_delay (float): Additional delay before the first sample.
+                Defaults to 0.
+            trigger_level (float): Trigger threshold. Defaults to 0.5.
+            tc_factor (float): Set the demodulator time constant to
+                ``delay / tc_factor``. Defaults to 1.
+            grid_mode (str): ``"nearest"``, ``"linear"``, or ``"exact"``.
+                Defaults to ``"linear"``.
+            edge (str): ``"rising"``, ``"falling"``, or ``"both"``. Defaults
+                to ``"rising"``.
+            endless (bool): Enable continuous acquisition. Defaults to False.
+            count (int): Grids to acquire when *endless* is false. Defaults to
+                1.
 
+        Raises:
+            ValueError: If *grid_mode* is unsupported.
+
+        """
+        # Normalize the dependent list.
         if isinstance(dependent, Sequence):
             self.dependents = [dep.zi_node.lower() for dep in dependent]
         else:
@@ -157,16 +203,16 @@ class NodeMFLI(BufferedNodeBase):
                 f"Invalid grid_mode: {grid_mode}. Must be nearest, linear or exact."
             )
 
-        # save force trigger
+        # Save whether the module should be triggered after arming.
         self._force_trigger = force_trigger
 
-        # set grid mode
+        # Configure how samples are aligned to the requested grid.
         self.daq_module.set("grid/mode", grid_mode)
 
         self.daq.setInt(f"/{self.serial}/demods/0/enable", 1)
         self.daq.setDouble(
             f"/{self.serial}/demods/0/timeconstant", float(delay) / tc_factor
-        )  # control the time constant in relation to delay
+        )
 
         self.daq_module.finish()
         self.daq_module.unsubscribe("*")
@@ -176,7 +222,7 @@ class NodeMFLI(BufferedNodeBase):
             "triggernode", f"/{self.serial}/demods/0/sample.TrigIn{int(input_trigger)}"
         )
 
-        # trigger level
+        # Configure the selected trigger input.
         self.daq.setDouble(
             f"/{self.serial}/triggers/in/{int(input_trigger) - 1}/level",
             trigger_level,
@@ -201,7 +247,7 @@ class NodeMFLI(BufferedNodeBase):
             duration = float(delay) * cols
             self.daq_module.set("duration", duration)
 
-        # trigger delay - shift data points to end of each ramp step, trigger_delay governs deviations from that
+        # Sample near the end of each ramp step, adjusted by trigger_delay.
         self.daq_module.set("delay", float(delay) + trigger_delay)
 
         self.daq_module.set("holdoff/time", max(0.0, float(delay) * (cols - 0.5)))
@@ -215,13 +261,20 @@ class NodeMFLI(BufferedNodeBase):
         self.daq_module.execute()
 
         if self._force_trigger:
-            sleep(0.2)  # wait a bit for the DAQ to be ready
+            sleep(0.2)  # Allow the DAQ module to finish arming.
             self.daq_module.set("forcetrigger", 1)
 
     def fetch(self, *, timeout: float = 15.0) -> list[np.ndarray]:
         """
-        Wait for DAQ completion and return a list of numpy arrays,
-        one for each subscribed path in self._subs.
+        Wait for DAQ completion and read subscribed values.
+
+        Args:
+            timeout (float): Maximum wait before reading available data.
+                Defaults to 15 seconds.
+
+        Returns:
+            list[np.ndarray]: One flattened array per dependent.
+
         """
         t0 = time()
         while not self.daq_module.finished():
@@ -245,21 +298,12 @@ class NodeMFLI(BufferedNodeBase):
 
 class NodeUHFLI(BufferedNodeBase):
     """
-    UHFLI node for a buffered sweep tree - very similar to MFLI node
+    Zurich Instruments UHFLI buffered sweep and acquisition node.
 
-    - Uses the LabOne DAQ module in **hardware-trigger** mode (type=6).
-    - Exact grid acquisition with:
-        rows := number of trigger events (outer dimension)
-        cols := number of points recorded per trigger (inner dimension)
-        (choose grid mode)
+    Dependents may use the hardware-triggered DAQ module or the LabOne Sweeper
+    module. The upstream sweep node must provide a trigger pulse at least
+    100 microseconds wide for DAQ acquisition.
 
-    Typical flow:
-        register_dependent(...)  # config + subscribe + execute()
-        ... run your QDAC sweep to generate triggers ...
-        fetch()                  # wait for completion and read data
-
-    NOTE:
-    Minimum trigger width is 1e-4s. Set the trigger width in the parent instrument accordingly.
     """
 
     _shared = {}
@@ -275,7 +319,7 @@ class NodeUHFLI(BufferedNodeBase):
         self.daq_module.set("device", self.serial)
         self.daq_module.set("type", 6)
 
-        # Shared state per physical UHFLI
+        # Share one Sweeper module and its subscriptions per physical UHFLI.
         if self.serial not in self._shared:
             sweeper = self.daq.sweep()
             sweeper.set("device", self.serial)
@@ -294,11 +338,11 @@ class NodeUHFLI(BufferedNodeBase):
 
     def register_sweep(
         self,
-        sweep: Union[Sweep, Sequence[Sweep]],
-        input_trigger: int = None,
-        output_trigger: int = None,
-        trigger_type: str = None,
-        trigger_width: float = None,
+        sweep: Sequence[Sweep],
+        input_trigger: int | None = None,
+        output_trigger: int | None = None,
+        trigger_type: str | None = None,
+        trigger_width: float | None = None,
         *,
         spacing: str = "lin",
         averaging: int = 1,
@@ -307,27 +351,39 @@ class NodeUHFLI(BufferedNodeBase):
         settling_inaccuracy: float = 100 * 1e-6,
         phase_unwrap: bool = False,
         **kwargs,
-    ) -> None:
+    ) -> tuple[None, int, None]:
         """
-        Configure and start a buffered sweep with the LabOne Sweeper Module. No triggering pissble/necessary
-        You can sweep all eight demodulator frequencies and the eight amplitudes of both outputs.
+        Configure a one-dimensional LabOne Sweeper Module sweep.
 
-        Parameters
-        ----------
-        sweep:
-            qcutils Sweep object defining start, stop and num.
-        spacing:
-            "lin" = linear frequency axis (default), "log" = logarithmic.
-        averaging:
-            Number of averages for each sweep point.
-        averaging_tc:
-            Sets the effective number of time constants per sweeper parameter point that is considered in the measurement.
-        sweep_order:
-            Order of the sweep (filter roll off).
-        settling_inaccuracy:
-            Demodulator filter settling inaccuracy defining the wait time between a sweep parameter change and recording of the next sweep point.
-        phase_unwrap:
-            If True, the phase is unwrapped to avoid jumps of 2pi in the phase data.
+        Args:
+            sweep (Sequence[Sweep]): Sequence containing exactly one sweep of a
+                parameter with a ``zi_node`` attribute.
+            input_trigger (int | None): Accepted for the common node interface
+                and ignored by this acquisition mode.
+            output_trigger (int | None): Accepted for the common node interface
+                and ignored by this acquisition mode.
+            trigger_type (str | None): Accepted for the common node interface
+                and ignored by this acquisition mode.
+            trigger_width (float | None): Accepted for the common node interface
+                and ignored by this acquisition mode.
+            spacing (str): ``"lin"`` or ``"log"``. Defaults to ``"lin"``.
+            averaging (int): Samples averaged per sweep point. Defaults to 1.
+            averaging_tc (int): Time constants allowed per point. Defaults to
+                5.
+            sweep_order (int): Demodulator filter order. Defaults to 3.
+            settling_inaccuracy (float): Target filter-settling inaccuracy.
+            phase_unwrap (bool): Unwrap phase across 2-pi boundaries. Defaults
+                to False.
+            **kwargs: Ignored compatibility options.
+
+        Returns:
+            tuple[None, int, None]: No trigger type, point count, and no fixed
+                step time.
+
+        Raises:
+            ValueError: If more than one sweep is supplied, the parameter has
+                no ``zi_node``, or *spacing* is unsupported.
+
         """
 
         if len(sweep) > 1:
@@ -362,10 +418,10 @@ class NodeUHFLI(BufferedNodeBase):
         else:
             raise ValueError(f"Invalid spacing: {spacing}. Must be 'lin' or 'log'.")
 
-        self.sweeper_module.set("scan", 0)  # sequential forward
+        self.sweeper_module.set("scan", 0)  # Sequential forward scan.
         self.sweeper_module.set("xmapping", xmapping)
 
-        self.sweeper_module.set("bandwidthcontrol", 2)  # Auto
+        self.sweeper_module.set("bandwidthcontrol", 2)  # Automatic selection.
         self.sweeper_module.set("bandwidthoverlap", 0)
         self.sweeper_module.set("loopcount", 1)
 
@@ -401,6 +457,7 @@ class NodeUHFLI(BufferedNodeBase):
         return None, num_points, None
 
     def run_sweep(self):
+        """Start the configured LabOne sweep."""
         self.daq_module.finish()
         self.sweeper_module.execute()
         if self.toplevel:
@@ -408,12 +465,12 @@ class NodeUHFLI(BufferedNodeBase):
 
     def _register_daq_dependent(
         self,
-        dependent: Union[Parameter, Sequence[Parameter]],
+        dependent: Parameter | Sequence[Parameter],
         num: int | Sequence[int],
         delay: float,
         input_trigger: int = 1,
         *,
-        demod_channels: Union[int, Sequence[int]] = 0,
+        demod_channels: int | Sequence[int] = 0,
         force_trigger: bool = False,
         trigger_delay: float = 0.0,
         trigger_level: float = 0.5,
@@ -425,25 +482,38 @@ class NodeUHFLI(BufferedNodeBase):
         **kwargs,
     ) -> None:
         """
-        Configure DAQ for a hardware-triggered, exact-grid acquisition and start it.
+        Configure and start a hardware-triggered DAQ acquisition.
 
         Args:
-            dependent: LabOne node(s), e.g. "demods/0/sample.r" or list thereof.
-            demod_channels: Demodulator channels to use for the dependent(s).
-            force_trigger: If True, force a trigger to start the acquisition.
-            num: Number of points. For 2D, pass (rows, cols) where rows is the number
-                 of trigger events (outer loop) and cols the points per trigger.
-            delay: Step time (s) of the innermost sweep; DAQ duration ~ delay * cols.
-            input_trigger: Which TrigIn (1 or 2) to use on the MFLI.
-            trigger_delay: Delay (s) between trigger and first sample (default 0).
-            tc_factor: Factor to adjust the time constant of the demodulator. The time constant is set to delay/tc_factor. (default 1)
-            grid_mode: DAQ grid mode; 1=nearest, 2=linear, 4=exact grid (default).
-            edge: Trigger edge; one of "rising", "falling", "both".
-            endless: If True, run continuous acquisition (advanced use).
-            count: Number of grids to acquire in single-shot mode (endless=False).
-        """
-        # Normalize dependents list
+            dependent (Parameter | Sequence[Parameter]): Parameters exposing a
+                Zurich Instruments ``zi_node`` path.
+            num (int | Sequence[int]): Point count, or ``(rows, columns)`` for a
+                two-dimensional acquisition.
+            delay (float): Innermost step time in seconds.
+            input_trigger (int): Trigger input number. Defaults to 1.
+            demod_channels (int | Sequence[int]): Demodulators to enable.
+                Defaults to 0.
+            force_trigger (bool): Force a trigger after arming. Defaults to
+                False.
+            trigger_delay (float): Additional delay before the first sample.
+                Defaults to 0.
+            trigger_level (float): Trigger threshold. Defaults to 0.5.
+            tc_factor (float): Set each demodulator time constant to
+                ``delay / tc_factor``. Defaults to 1.
+            grid_mode (str): ``"nearest"``, ``"linear"``, or ``"exact"``.
+                Defaults to ``"linear"``.
+            edge (str): ``"rising"``, ``"falling"``, or ``"both"``. Defaults
+                to ``"rising"``.
+            endless (bool): Enable continuous acquisition. Defaults to False.
+            count (int): Grids to acquire when *endless* is false. Defaults to
+                1.
+            **kwargs: Ignored compatibility options.
 
+        Raises:
+            ValueError: If *grid_mode* is unsupported.
+
+        """
+        # Normalize the dependent list.
         if isinstance(dependent, Sequence):
             self.dependents = [dep.zi_node.lower() for dep in dependent]
         else:
@@ -454,17 +524,17 @@ class NodeUHFLI(BufferedNodeBase):
                 f"Invalid grid_mode: {grid_mode}. Must be nearest, linear or exact."
             )
 
-        # save force trigger
+        # Save whether the module should be triggered after arming.
         self._force_trigger = force_trigger
 
-        # set grid mode
+        # Configure how samples are aligned to the requested grid.
         self.daq_module.set("grid/mode", grid_mode)
 
         for demod in np.atleast_1d(demod_channels):
             self.daq.setInt(f"/{self.serial}/demods/{demod}/enable", 1)
             self.daq.setDouble(
                 f"/{self.serial}/demods/{demod}/timeconstant", float(delay) / tc_factor
-            )  # control the time constant in relation to delay
+            )
 
         self.daq_module.finish()
         self.daq_module.unsubscribe("*")
@@ -476,13 +546,13 @@ class NodeUHFLI(BufferedNodeBase):
                 f"/{self.serial}/demods/{demod}/sample.TrigIn{int(input_trigger)}",
             )
 
-        # trigger level
+        # Configure the selected trigger input.
         self.daq.setDouble(
             f"/{self.serial}/triggers/in/{int(input_trigger) - 1}/level",
             trigger_level,
         )
 
-        # ensure input trigger impedances at 1 kOhm
+        # Use high-impedance mode for every trigger input.
         for i in [0, 1, 2, 3]:
             self.daq.set(f"/{self.serial}/triggers/in/{i}/imp50", 0)
 
@@ -505,7 +575,7 @@ class NodeUHFLI(BufferedNodeBase):
             duration = float(delay) * cols
             self.daq_module.set("duration", duration)
 
-        # trigger delay - shift data points to end of each ramp step, trigger_delay governs deviations from that
+        # Sample near the end of each ramp step, adjusted by trigger_delay.
         self.daq_module.set("delay", float(delay) + trigger_delay)
 
         self.daq_module.set("holdoff/time", max(0.0, float(delay) * (cols - 0.5)))
@@ -519,17 +589,33 @@ class NodeUHFLI(BufferedNodeBase):
         self.daq_module.execute()
 
         if self._force_trigger:
-            sleep(0.2)  # wait a bit for the DAQ to be ready
+            sleep(0.2)  # Allow the DAQ module to finish arming.
             self.daq_module.set("forcetrigger", 1)
 
     def _register_sweeper_dependent(
         self,
-        dependent: Union[Parameter, Sequence[Parameter]],
+        dependent: Parameter | Sequence[Parameter],
         num: int | Sequence[int],
         delay: float,
-        input_trigger: int = None,
+        input_trigger: int | None = None,
         **kwargs,
     ) -> None:
+        """
+        Subscribe dependents to the configured LabOne Sweeper Module.
+
+        Args:
+            dependent (Parameter | Sequence[Parameter]): Parameters exposing a
+                supported ``zi_node`` sample field.
+            num (int | Sequence[int]): Accepted for the common node interface.
+            delay (float): Accepted for the common node interface.
+            input_trigger (int | None): Accepted for the common node interface.
+            **kwargs: Ignored compatibility options.
+
+        Raises:
+            ValueError: If this is not an acquisition-only end node or a
+                dependent uses an unsupported sample field.
+
+        """
         if not self.endnode:
             raise ValueError("Sweeper dependents can only be registered on end nodes.")
 
@@ -540,20 +626,16 @@ class NodeUHFLI(BufferedNodeBase):
 
         self.dependents = dependents
 
-        # Mapping:
-        # QCoDeS dependent -> sweeper sample field
+        # Map each QCoDeS dependent to its Sweeper sample field.
         sweeper_fields = []
 
-        # Subscribe each demod sample node only once
+        # Subscribe to each demodulator sample node only once.
         sample_paths = set()
 
         for dep in dependents:
             zi_node = dep.zi_node.lower()
 
-            # e.g.
-            # /demods/0/sample.r
-            # ->
-            # /demods/0/sample
+            # For example, /demods/0/sample.r maps to /demods/0/sample.
             if zi_node.endswith(".r"):
                 sample_path = zi_node.removesuffix(".r")
                 field = "r"
@@ -595,13 +677,31 @@ class NodeUHFLI(BufferedNodeBase):
 
     def register_dependent(
         self,
-        dependent,
+        dependent: Parameter | Sequence[Parameter],
         num: int | list[int],
-        delay,
+        delay: float,
         *,
         acquisition: str = "daq",
         **kwargs,
     ) -> None:
+        """
+        Configure dependents for DAQ or Sweeper acquisition.
+
+        Args:
+            dependent (Parameter | Sequence[Parameter]): Parameters exposing a
+                Zurich Instruments ``zi_node`` path.
+            num (int | list[int]): Point count, or two-dimensional geometry.
+            delay (float): Innermost step time in seconds.
+            acquisition (str): ``"daq"`` or ``"sweeper"``. Defaults to
+                ``"daq"``.
+            **kwargs: Mode-specific options forwarded to the selected
+                acquisition setup.
+
+        Raises:
+            ValueError: If *acquisition* is unsupported or a Sweeper dependent
+                is registered on a non-end node.
+
+        """
         if acquisition == "daq":
             self._register_daq_dependent(
                 dependent=dependent,
@@ -626,7 +726,24 @@ class NodeUHFLI(BufferedNodeBase):
 
         self._active_acquisition = acquisition
 
-    def fetch(self, *, timeout: float = 15.0):
+    def fetch(self, *, timeout: float = 15.0) -> list[np.ndarray]:
+        """
+        Fetch the active DAQ or Sweeper acquisition.
+
+        Args:
+            timeout (float): DAQ wait limit in seconds. Sweeper acquisition uses
+                twice this value as an allowance beyond its estimated duration.
+                Defaults to 15.
+
+        Returns:
+            list[np.ndarray]: One flattened array per dependent.
+
+        Raises:
+            RuntimeError: If no acquisition has been registered.
+            TimeoutError: If a Sweeper acquisition exceeds its estimated time
+                plus the timeout allowance.
+
+        """
         if self._active_acquisition == "daq":
             return self._fetch_daq(timeout=timeout)
 
@@ -637,8 +754,15 @@ class NodeUHFLI(BufferedNodeBase):
 
     def _fetch_daq(self, *, timeout: float = 15.0) -> list[np.ndarray]:
         """
-        Wait for DAQ completion and return a list of numpy arrays,
-        one for each subscribed path in self._subs.
+        Wait for DAQ completion and read subscribed values.
+
+        Args:
+            timeout (float): Maximum wait before reading available data.
+                Defaults to 15 seconds.
+
+        Returns:
+            list[np.ndarray]: One flattened array per dependent.
+
         """
         t0 = time()
         while not self.daq_module.finished():
@@ -660,6 +784,22 @@ class NodeUHFLI(BufferedNodeBase):
         return arrays
 
     def _fetch_sweeper(self, *, timeout: float = 30.0) -> list[np.ndarray]:
+        """
+        Wait for Sweeper completion and read the requested sample fields.
+
+        Args:
+            timeout (float): Additional allowance beyond the Sweeper's reported
+                remaining time. Defaults to 30 seconds.
+
+        Returns:
+            list[np.ndarray]: One flattened array per dependent.
+
+        Raises:
+            TimeoutError: If acquisition exceeds its reported remaining time
+                plus *timeout*.
+            KeyError: If a requested field is absent from the returned sample.
+
+        """
         remaining = self.sweeper_module.getDouble("remainingtime")
         while np.isnan(remaining):
             sleep(0.1)
@@ -686,8 +826,7 @@ class NodeUHFLI(BufferedNodeBase):
             path = spec["path"]
             field = spec["field"]
 
-            # Example:
-            # /dev2793/demods/0/sample
+            # Example path: /dev2793/demods/0/sample
             parts = path.strip("/").split("/")
 
             device = parts[0]  # dev2793
@@ -710,21 +849,13 @@ class NodeUHFLI(BufferedNodeBase):
 
 class NodeKeysightDMM(BufferedNodeBase):
     """
-    Keysight 344xxA DMM node for a buffered sweep tree.
+    Keysight 344xxA DMM node using externally triggered reading memory.
 
-    - Uses the DMM's internal reading memory.
-    - Acquisition is triggered by an external trigger source (EXT).
-    - Supports 1D and 2D buffered acquisitions:
-        rows := number of points acquired per trigger (inner dimension)
-        cols := number of trigger events (outer dimension)
+    One-dimensional step-triggered acquisition is implemented. A
+    two-dimensional point shape is accepted by the shared interface, but its
+    DMM count configuration still requires hardware validation. The upstream
+    sweep node must provide a trigger pulse at least one millisecond wide.
 
-    Typical flow:
-        register_dependent(...)  # configure triggering, timing, and integration
-        ... run external sweep device to generate triggers ...
-        fetch()                  # read out buffered data
-
-    NOTE:
-    Minimum trigger width is 1e-3s. Set the trigger width in the parent instrument accordingly.
     """
 
     def __init__(self, inst: Instrument, *args, **kwargs) -> None:
@@ -734,26 +865,30 @@ class NodeKeysightDMM(BufferedNodeBase):
 
     def register_dependent(
         self,
-        dependent: Union[Parameter, Sequence[Parameter], None],
+        dependent: Parameter | Sequence[Parameter] | None,
         num: int | Sequence[int],
         delay: int | float,
         input_trigger: int = 1,
         trigger_type: str = "step",
     ) -> None:
         """
-        Configure the Keysight DMM for a buffered, externally triggered acquisition.
+        Configure a buffered, externally triggered DMM acquisition.
 
         Args:
-            dependent (Parameter | Sequence[Parameter] | None):
-                Dependent parameter(s) associated with this node.
-            num (int | Sequence[int]):
-                Number of points. For 2D acquisitions, pass (rows, cols) where:
-                    cols := points acquired per trigger
-                    rows := number of trigger events
-            delay (int | float):
-                Step time in seconds. Used for integration time and sample timing.
-            input_trigger (int):
-                External trigger selector (kept for interface compatibility).
+            dependent (Parameter | Sequence[Parameter] | None): Parameters
+                associated with the DMM readings.
+            num (int | Sequence[int]): Point count. A two-dimensional shape is
+                interpreted as ``(trigger events, points per trigger)`` but is
+                not fully configured yet.
+            delay (int | float): Step time used to select trigger delay and
+                integration time.
+            input_trigger (int): External trigger selector. Only 1 is supported.
+            trigger_type (str): Triggering mode. Only ``"step"`` is supported.
+
+        Raises:
+            NotImplementedError: If the trigger input, trigger type, or DMM
+                model is unsupported.
+
         """
         self._process_dependents(dependent)
         self.num = num
@@ -770,7 +905,8 @@ class NodeKeysightDMM(BufferedNodeBase):
         self.core.autozero("OFF")
 
         if isinstance(num, Sequence) and not isinstance(num, (str, bytes)):
-            rows, cols = int(num[0]), int(num[1])
+            # TODO: Configure the 2D counts after validating them on the DMM.
+            rows, cols = int(num[0]), int(num[1])  # noqa: F841
         else:
             if self.trigger_type == "step":
                 self.core.sample.count(1)
@@ -810,6 +946,10 @@ class NodeKeysightDMM(BufferedNodeBase):
         Returns:
             list[np.ndarray]: List containing a single flattened array of
             measured values.
+
+        Raises:
+            VisaIOError: If the instrument read fails or times out.
+
         """
         if isinstance(self.num, Sequence) and not isinstance(self.num, (str, bytes)):
             num = int(self.num[0]) * int(self.num[1])
@@ -839,6 +979,8 @@ class NodeKeysightDMM(BufferedNodeBase):
 
 
 class NodeQDAC2(BufferedNodeBase):
+    """QDevil QDAC-II sweep and current-acquisition node."""
+
     def __init__(
         self,
         inst: Instrument,
@@ -846,35 +988,49 @@ class NodeQDAC2(BufferedNodeBase):
         **kwargs,
     ) -> None:
         """
-        QDAC2 as a node in the buffered sweep tree
+        Initialize a node around a QDAC-II instrument.
 
         Args:
-            sweep (Sweep or Sequence[Sweep]): The sweep object to be used in the buffered sweep tree. Can be a 1D or 2D sweep.
-            dependent (Union[Parameter, Sequence[Parameter]]): Dependent parameter to be measured. Only read_current_A is supported.
+            inst (Instrument): QDAC-II QCoDeS instrument.
+            *args: Additional arguments passed to :class:`BufferedNodeBase`.
+            **kwargs: Additional keyword arguments passed to
+                :class:`BufferedNodeBase`.
+
         """
         super().__init__(inst=inst, *args, **kwargs)
         self.contacts = {}
 
     def register_sweep(
         self,
-        sweep: Union[Sweep, Sequence[Sweep]],
-        input_trigger: int = None,
-        output_trigger: int = None,
+        sweep: Sweep | Sequence[Sweep],
+        input_trigger: int | None = None,
+        output_trigger: int | None = None,
         trigger_type: str = "ramp",
         trigger_width: float = 1e-4,
-    ):
+    ) -> tuple[str, int | list[int], float]:
         """
-        Register the 1D/2D buffered sweep with triggers for the QDAC2
+        Configure a one- or two-dimensional QDAC-II virtual sweep.
 
         Args:
-            sweep (Union[Sweep, Sequence[Sweep]]): qcutils Sweep or list of Sweeps
-            input_trigger (int): input trigger for the QDAC2 (Optional, defaults to None)
-            output_trigger (int): output trigger for the QDAC2 (Optional, defaults to None)
-            trigger_type (str): Type of trigger for the QDAC2, only to be used for 2D sweeps. One of either "ramp" (trigger at the start of each ramp) or "step" (at each step). (Optional, defaults to "ramp" for 2D sweeps, "step" for 1D sweeps)
+            sweep (Sweep | Sequence[Sweep]): One or two QDAC-II channel sweeps.
+            input_trigger (int | None): Optional external start-trigger number.
+            output_trigger (int | None): Optional trigger-output number.
+            trigger_type (str): ``"ramp"`` for an output trigger per inner
+                ramp or ``"step"`` for one per inner point. One-dimensional
+                sweeps support only ``"step"``.
+            trigger_width (float): Output-trigger width in seconds. Defaults to
+                0.0001.
 
         Returns:
-            num_points (int): Number of points in the sweep
-            step_time (int | float): Duration of the innermost sweep in seconds. num_points * step_time = total time of the whole sweep sequence
+            tuple[str, int | list[int], float]: Trigger type, point geometry,
+                and innermost step time.
+
+        Raises:
+            ValueError: If the step delay is shorter than the trigger width or
+                *trigger_type* is invalid.
+            NotImplementedError: If the requested dimensionality or a
+                one-dimensional ramp trigger is unsupported.
+
         """
         self._process_sweeps(sweep)
         self._trigger_width = trigger_width
@@ -1008,6 +1164,7 @@ class NodeQDAC2(BufferedNodeBase):
             raise NotImplementedError("Only 1D and 2D sweeps are supported")
 
     def run_sweep(self):
+        """Start the configured QDAC-II sweep and wait when this is the root."""
         self._sweep_active = True
         self._qdac_sweep.start()
         try:
@@ -1025,23 +1182,33 @@ class NodeQDAC2(BufferedNodeBase):
 
     def register_dependent(
         self,
-        dependent: Union[Parameter, Sequence[Parameter]],
+        dependent: Parameter | Sequence[Parameter],
         num: int | Sequence[int],
         delay: float,
         input_trigger: int = 1,
     ) -> None:
         """
-        Register the measurement with the QDAC2
+        Configure QDAC-II current measurements for the buffered sweep.
 
         Args:
-            step_time (int or float): Duration of the current measurement in seconds. Depends on the preceeding sweep's step size.
+            dependent (Parameter | Sequence[Parameter]): Current parameters to
+                acquire.
+            num (int | Sequence[int]): Point geometry supplied by the tree.
+            delay (float): Measurement aperture in seconds.
+            input_trigger (int): Accepted for the common node interface and
+                ignored.
+
+        Raises:
+            NotImplementedError: If the QDAC-II is used only as an acquisition
+                end node.
+
         """
         self._process_dependents(dependent)
 
         # TODO: Check that dependent is read_current_A, make it robust against parameter renames
 
-        # if the device has sweeps set, then trigger by internal trigger
-        # if the device is acting as an end node, then trigger by external trigger
+        # A combined sweep/acquisition node uses its configured internal trigger.
+        # Acquisition-only operation would require an external-trigger setup.
         if self.sweepnode:
             for dependent in self.dependents:
                 dependent.instrument.clear_measurements()
@@ -1052,12 +1219,13 @@ class NodeQDAC2(BufferedNodeBase):
         elif self.endnode:
             raise NotImplementedError("End node not implemented for QDAC2")
 
-    def fetch(self) -> list:
+    def fetch(self) -> list[np.ndarray]:
         """
-        Fetch the measurement from the QDAC2
+        Fetch buffered current readings from the QDAC-II.
 
         Returns:
-            list: List of the measured values
+            list[np.ndarray]: One flattened current array per dependent.
+
         """
         results = []
         for dependent in self.dependents:
@@ -1067,33 +1235,40 @@ class NodeQDAC2(BufferedNodeBase):
 
 
 class NodeKeysightVNA(BufferedNodeBase):
-    """
-    Keysight VNA node for a buffered sweep tree.
-    """
+    """Keysight VNA node for buffered frequency sweeps."""
 
     def __init__(self, inst: Instrument, *args, **kwargs):
         super().__init__(inst=inst, *args, **kwargs)
 
     def register_sweep(
         self,
-        sweep: Sweep,
-        input_trigger: int = None,
-        output_trigger: int = None,
-        trigger_type: str = None,
-        trigger_width: float = None,
-    ):
+        sweep: Sweep | Sequence[Sweep],
+        input_trigger: int | None = None,
+        output_trigger: int | None = None,
+        trigger_type: str | None = None,
+        trigger_width: float | None = None,
+    ) -> tuple[None, int, None]:
         """
-        Register a buffered frequency sweep on the VNA.
+        Configure a one-dimensional buffered frequency sweep.
 
         Args:
-            sweep (Sweep): qcutils Sweep (only 1D supported).
-            input_trigger (int, optional): Not supported.
-            output_trigger (int, optional): Not supported.
-            trigger_type (str, optional): Not supported.
-            trigger_width (float, optional): Not supported.
+            sweep (Sweep | Sequence[Sweep]): One frequency sweep.
+            input_trigger (int | None): Accepted for the common node interface
+                and ignored.
+            output_trigger (int | None): Accepted for the common node interface
+                and ignored.
+            trigger_type (str | None): Accepted for the common node interface
+                and ignored.
+            trigger_width (float | None): Accepted for the common node interface
+                and ignored.
 
         Returns:
-            tuple: (trigger_type, num_points, step_time). Step time is None.
+            tuple[None, int, None]: No trigger type, point count, and no fixed
+                step time.
+
+        Raises:
+            NotImplementedError: If more than one sweep is supplied.
+
         """
         self._process_sweeps(sweep)
 
@@ -1107,20 +1282,23 @@ class NodeKeysightVNA(BufferedNodeBase):
 
     def register_dependent(
         self,
-        dependent: Parameter | list[Parameter] | None,
-        num: int | list[int],
+        dependent: Parameter | Sequence[Parameter],
+        num: int | Sequence[int],
         delay: int | float,
-        input_trigger: int = None,
+        input_trigger: int | None = None,
     ) -> None:
         """
         Register S-parameter dependents to be measured by the VNA.
 
         Args:
-            dependent (Parameter | list[Parameter] | None): Dependent parameter(s)
-                created by the VNA driver (must have `._sparam` attribute).
-            num (int | list[int]): Number of points expected (stored for fetch).
-            delay (int | float): Step time (unused by the VNA node).
-            input_trigger (int, optional): Not supported.
+            dependent (Parameter | Sequence[Parameter]): VNA parameters
+                exposing an ``_sparam`` attribute.
+            num (int | Sequence[int]): Expected point geometry.
+            delay (int | float): Accepted for the common node interface and
+                ignored.
+            input_trigger (int | None): Accepted for the common node interface
+                and ignored.
+
         """
         self._process_dependents(dependent)
         self.num = num
@@ -1130,20 +1308,23 @@ class NodeKeysightVNA(BufferedNodeBase):
         )
 
     def run_sweep(self):
-        """Run the VNA sweep."""
+        """Run the configured VNA sweep."""
         self.core.traces[0].run_sweep()
 
-    def fetch(self):
+    def fetch(self) -> list[np.ndarray]:
         """
         Fetch dependent data.
 
         Returns:
             list[np.ndarray]: One array per dependent.
+
         """
         return [dep() for dep in self.dependents]
 
 
 class NodeBaselDAC(BufferedNodeBase):
+    """Basel LNHR DAC node for one- or two-dimensional AWG sweeps."""
+
     def __init__(
         self,
         inst: Instrument,
@@ -1151,37 +1332,51 @@ class NodeBaselDAC(BufferedNodeBase):
         **kwargs,
     ) -> None:
         """
-        BaselDAC as a node in the buffered sweep tree, it can oly be on top of the tree
-
-        trigger setup: for 1D sweep just diable, for 2D sweep use awg a and c - put BNC sync out A into Trig in C and vice versa - set trigger type of inner awg to disable and trigger type of outer awg to single step
+        Initialize a node around a Basel LNHR DAC.
 
         Args:
-            sweep (Sweep or Sequence[Sweep]): The sweep object to be used in the buffered sweep tree. Can be a 1D or 2D sweep.
-            dependent (Union[Parameter, Sequence[Parameter]]): Dependent parameter to be measured. E.g. MFLI or UHFLI
+            inst (Instrument): Basel LNHR DAC QCoDeS instrument.
+            *args: Additional arguments passed to :class:`BufferedNodeBase`.
+            **kwargs: Additional keyword arguments passed to
+                :class:`BufferedNodeBase`.
+
         """
         super().__init__(inst=inst, *args, **kwargs)
         self.contacts = {}
 
     def register_sweep(
         self,
-        sweep: Union[Sweep, Sequence[Sweep]],
-        input_trigger: int = None,
-        output_trigger: int = None,
-        trigger_type: str = None,
-        trigger_width: float = None,
-    ):
+        sweep: Sweep | Sequence[Sweep],
+        input_trigger: int | None = None,
+        output_trigger: int | None = None,
+        trigger_type: str | None = None,
+        trigger_width: float | None = None,
+    ) -> tuple[str | None, int, float]:
         """
-        Register the 1D/2D buffered sweep with triggers for the LNHR DAC 2 - make sure to have correct bandwidth (high or low) on used channels!
+        Configure a one- or two-dimensional DAC AWG sweep.
 
         Args:
-            sweep (Union[Sweep, Sequence[Sweep]]): qcutils Sweep or list of Sweeps
-            trigger_type (str): Type of trigger for Basel dac
+            sweep (Sweep | Sequence[Sweep]): One or two channel sweeps.
+            input_trigger (int | None): Accepted for the common node interface
+                and ignored.
+            output_trigger (int | None): Accepted for the common node interface
+                and ignored.
+            trigger_type (str | None): Trigger label returned to the tree.
+            trigger_width (float | None): Accepted for the common node interface
+                and ignored.
+
         Returns:
-            num_points (int): Number of points in the sweep
-            step_time (int | float): Duration of the innermost sweep in seconds. num_points * step_time = total time of the whole sweep sequence
+            tuple[str | None, int, float]: Trigger label, total point count, and
+                innermost step time.
+
+        Raises:
+            ValueError: If the delay is shorter than 20 microseconds, or a 2D
+                sweep does not place its channels on different AWGs.
+            NotImplementedError: If more than two sweeps are supplied.
+
         """
 
-        # minimum delay you can have between steps in a ramp
+        # The DAC requires at least 20 microseconds between ramp steps.
         minimum_delay = 20 * 1e-6  # 20 us
 
         self._process_sweeps(sweep)
@@ -1223,7 +1418,7 @@ class NodeBaselDAC(BufferedNodeBase):
                     "Inner and outer channels must be on different AWGs (1-12 on AWG A, 13-24 on AWG C)"
                 )
 
-            # manually write the awg arrangement for the BaselDAC
+            # Configure both AWGs explicitly for the nested sweep.
             inner_awg.enable(False)
             outer_awg.enable(False)
 
@@ -1250,7 +1445,7 @@ class NodeBaselDAC(BufferedNodeBase):
 
             self._BaselDAC_sweep_start = lambda: self.core.run_awg_sweep(
                 [inner_awg, outer_awg]
-            )  # if it does not work only enable first inner awg!
+            )
 
             return trigger_type, num_points, self.delay
 
@@ -1297,25 +1492,32 @@ class NodeBaselDAC(BufferedNodeBase):
             raise NotImplementedError("Only 1D and 2D sweeps are supported")
 
     def run_sweep(self):
+        """Start the configured Basel DAC AWG sweep."""
         self._BaselDAC_sweep_start()
 
     def register_dependent(
         self,
-        dependent: Parameter | list[Parameter] | None,
-        num: int | list[int],
+        dependent: Parameter | Sequence[Parameter],
+        num: int | Sequence[int],
         delay: int | float,
-        input_trigger: int = None,
+        input_trigger: int | None = None,
     ) -> None:
         """
+        Register parameters to read after the Basel DAC sweep.
+
         Args:
-            dependent (Parameter | list[Parameter] | None): Dependent parameter(s)
-                created by the VNA driver (must have `._sparam` attribute).
-            num (int | list[int]): Number of points expected (stored for fetch).
+            dependent (Parameter | Sequence[Parameter]): Parameter or parameters
+                read by :meth:`fetch`.
+            num (int | Sequence[int]): Expected point geometry.
+            delay (int | float): Step time supplied by the tree.
+            input_trigger (int | None): Accepted for the common node interface
+                and ignored.
+
         """
         self._process_dependents(dependent)
         self.num = num
 
-    def fetch(self):
+    def fetch(self) -> list[np.ndarray]:
         """
         Fetch dependent data.
 
@@ -1329,21 +1531,58 @@ class NodeDelay(BufferedNodeBase):
     """
     Virtual sweep node for buffered time sweeps.
 
-    The node does not actively step anything. It only defines the number of points and the time spacing for a downstream buffered acquisition, e.g. a Zurich Instruments DAQ module.
+    The node does not actively step anything. It defines the point count and
+    spacing for a downstream buffered acquisition such as a Zurich Instruments
+    DAQ module.
+
     """
 
     def __init__(self, inst: Instrument, *args, **kwargs):
+        """
+        Initialize a virtual delay node.
+
+        Args:
+            inst (Instrument): Placeholder instrument required by the common
+                buffered-node interface.
+            *args: Additional arguments passed to :class:`BufferedNodeBase`.
+            **kwargs: Additional keyword arguments passed to
+                :class:`BufferedNodeBase`.
+
+        """
         super().__init__(inst=inst, *args, **kwargs)
 
     def register_sweep(
         self,
-        sweep: Union[Sweep, Sequence[Sweep]],
-        input_trigger=None,
-        output_trigger=None,
-        trigger_type=None,
-        trigger_width=None,
+        sweep: Sweep | Sequence[Sweep],
+        input_trigger: int | None = None,
+        output_trigger: int | None = None,
+        trigger_type: str | None = None,
+        trigger_width: float | None = None,
         **kwargs,
-    ):
+    ) -> tuple[None, int, float]:
+        """
+        Register one time sweep without configuring physical hardware.
+
+        Args:
+            sweep (Sweep | Sequence[Sweep]): Sequence containing one sweep.
+            input_trigger (int | None): Accepted for the common node interface
+                and ignored.
+            output_trigger (int | None): Accepted for the common node interface
+                and ignored.
+            trigger_type (str | None): Accepted for the common node interface
+                and ignored.
+            trigger_width (float | None): Accepted for the common node interface
+                and ignored.
+            **kwargs: Ignored compatibility options.
+
+        Returns:
+            tuple[None, int, float]: No trigger type, point count, and time
+                spacing in seconds.
+
+        Raises:
+            ValueError: If more than one sweep is supplied.
+
+        """
         self._process_sweeps(sweep)
 
         if len(self.sweeps) != 1:
@@ -1358,10 +1597,11 @@ class NodeDelay(BufferedNodeBase):
 
     def run_sweep(self):
         """
-        Nothing to step physically.
+        Wait for the acquisition window when this delay node is the tree root.
 
-        The downstream acquisition module already runs asynchronously.
-        We only keep the top-level sweep alive long enough for the acquisition window.
+        The downstream acquisition module runs asynchronously, so no physical
+        parameter is stepped here.
+
         """
         if self.toplevel:
             sleep((self.num + 1) * self.delay)
