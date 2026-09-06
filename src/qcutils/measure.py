@@ -7,9 +7,9 @@ import socket
 import subprocess
 import sys
 import uuid
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Optional, Sequence, Union
+from time import time
+from typing import Callable, Optional, Sequence, Union
 
 import numpy as np
 import xarray as xr
@@ -17,93 +17,216 @@ import zarr
 from checksumdir import dirhash
 from git import Repo
 from qcodes.parameters import Parameter
+from qimchi_connect import (
+    QCUtilsSnapshotProvider,
+    close_live_measurement,
+    get_live_measurements,
+    register_live_measurement,
+    update_live_disk_path,
+)
 from tqdm import tqdm
 
 # Local imports
-from qcutils import live_server
 from qcutils.buffered.sweep import (
-    abort_instruments,
+    _abort_instruments,
     _buffered_sweep_progress_info,
-    fetch_dependents_tree,
+    _fetch_dependents_tree,
 )
+from qcutils.dataset import convert as _convert_live_store
 from qcutils.logger import get_logger
-from qcutils.parameters import ParameterMixin, MultiChannelParameter
-from qcutils.shared import live_db
-from qcutils.sweep import CircularSweep, Sweep, stepper, sweeper
+from qcutils.parameters import MultiChannelParameter, ParameterMixin
+from qcutils.sweep import (
+    CircularSweep,
+    Sweep,
+    _stepper,
+    _sweep_parameters,
+    reset_disk_persist_cache,
+    sweeper,
+)
+
+__all__ = [
+    "Station",
+    "Measurement",
+    "run",
+]
+
 
 logger = get_logger(__name__)
 
 
-@dataclass
-class LiveDatasetInfo:
-    store: Optional[zarr.MemoryStore]
-    disk_path: Optional[str] = None
-    host: str = field(default_factory=lambda: socket.gethostname())
-    pid: int = field(default_factory=os.getpid)
-    started_at: str = field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
+def _live_store_root() -> Path:
+    """
+    Return the directory holding live Zarr stores, creating it if needed.
+
+    Each store is a temporary disk checkpoint for a running measurement and a
+    fallback for live consumers. It is removed after a successful netCDF
+    export.
+
+    ``QCUTILS_HOME`` overrides the default ``~/.qcutils`` application directory.
+
+    Returns:
+        Path: Directory for live Zarr stores.
+
+    """
+    home = os.environ.get("QCUTILS_HOME")
+    directory = (Path(home) if home else Path.home() / ".qcutils") / "live"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _target_marker(store_path: Path) -> Path:
+    """
+    Return the sidecar file that records a live store's final netCDF path.
+
+    Args:
+        store_path (Path): The live Zarr store.
+
+    Returns:
+        Path: Marker path ending in ``.zarr.target``.
+
+    """
+    return store_path.with_suffix(".zarr.target")
+
+
+def _recover_orphaned_store(store_path: Path) -> bool:
+    """
+    Convert an abandoned live store into the netCDF file it was headed for.
+
+    Args:
+        store_path (Path): Live Zarr store of a measurement that never
+            finalised.
+
+    Returns:
+        bool: Whether conversion produced the intended netCDF file. A false
+            result can mean that the target already exists, no target was
+            recorded, or recovery failed.
+
+    """
+    marker = _target_marker(store_path)
+    try:
+        target = Path(marker.read_text(encoding="utf-8").strip())
+    except Exception as exc:
+        logger.warning(f"No recovery target recorded for {store_path}: {exc}")
+        return False
+
+    if target.exists():
+        logger.info(f"{target} already exists; leaving it alone.")
+        return False
+
+    staged = target.with_suffix(".zarr")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(store_path), str(staged))
+        _convert_live_store(target, overwrite=False)
+    except Exception as exc:
+        logger.error(
+            f"Could not recover the interrupted measurement at {store_path} "
+            f"into {target}: {exc}. Its data is still in the zarr store."
+        )
+        return False
+
+    logger.warning(
+        f"Recovered an interrupted measurement into {target}. It never "
+        "finished, so it is very likely incomplete."
     )
+    return True
 
 
-# Registry tracking active in-memory Zarr stores keyed by measurement ID.
-LIVE_MEMORY_STORES: Dict[str, Union[zarr.MemoryStore, LiveDatasetInfo]] = {}
+def _prune_orphaned_live_stores(minimum_age_seconds: float = 3600.0) -> None:
+    """
+    Recover live Zarr stores left behind by measurements that are no longer live.
+
+    An old store whose measurement is absent from the live registry is treated
+    as abandoned, usually because its process ended before finalisation. The
+    store may contain the only copy of the acquired data, so QCUtils first tries
+    to recover it to its intended netCDF file. If conversion fails after the
+    store has been moved beside that target, the staged Zarr data is preserved
+    for manual recovery. An unrecoverable scratch store is otherwise removed.
+
+    New stores are left alone because a producer may create its store before
+    publishing its discovery record. This grace period prevents a concurrent
+    measurement from being mistaken for an abandoned one.
+
+    Args:
+        minimum_age_seconds (float): Leave stores younger than this alone.
+
+    """
+    try:
+        live_ids = {record.measurement_id for record in get_live_measurements()}
+    except Exception as exc:
+        logger.warning(f"Skipped pruning live stores; registry unreadable: {exc}")
+        return
+
+    cutoff = time() - minimum_age_seconds
+    for store_path in _live_store_root().glob("*.zarr"):
+        if store_path.stem in live_ids:
+            continue
+        try:
+            if store_path.stat().st_mtime > cutoff:
+                continue
+            if _recover_orphaned_store(store_path):
+                _target_marker(store_path).unlink(missing_ok=True)
+                continue
+            if store_path.exists():
+                logger.warning(
+                    f"Removing the live store of an unfinished measurement that "
+                    f"could not be recovered: {store_path}."
+                )
+                shutil.rmtree(store_path)
+            _target_marker(store_path).unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning(f"Failed pruning orphaned live store {store_path}: {exc}")
 
 
-def register_memory_store(
+def _register_memory_store(
     measurement_id: str, store: zarr.MemoryStore, disk_path: Optional[str] = None
 ) -> int:
     """
-    Register a memory store and start WebSocket server.
+    Publish a memory store as a live measurement.
+
+    Args:
+        measurement_id (str): Stable identifier for the active measurement.
+        store (zarr.MemoryStore): In-memory Zarr store containing live data.
+        disk_path (Optional[str]): Persisted fallback location advertised to
+            consumers.
 
     Returns:
-        int: WebSocket port number if server started, 0 otherwise
+        int: Port serving the live measurement, or zero if publication failed.
+
     """
-    info = LiveDatasetInfo(store=store, disk_path=disk_path)
-    LIVE_MEMORY_STORES[measurement_id] = info
+    _prune_orphaned_live_stores()
 
-    ws_port = 0
-
-    # Start WebSocket server if not already running
-    if live_server.is_server_running():
-        ws_port = live_server.get_server_port()
-        logger.debug(
-            f"WebSocket server already running on port {ws_port}, registered measurement {measurement_id}"
+    # One call sweeps stale rows, starts the server if it is not already up,
+    # publishes the snapshot callback, and writes the discovery row Qimchi
+    # reads. It also tracks the publication, so there is nothing to keep here.
+    try:
+        registration = register_live_measurement(
+            measurement_id,
+            QCUtilsSnapshotProvider(store),
+            disk_path=disk_path,
+            port=_find_available_port(8765),
+            retention_days=7,
         )
-    else:
-        logger.info("Starting WebSocket server for live data...")
-        # NOTE: Find available port starting from 8765
-        ws_port = _find_available_port(8765)
-        live_server.set_memory_stores_reference(LIVE_MEMORY_STORES)
-        if live_server.start_live_server(port=ws_port):
-            logger.info(
-                f"Live data WebSocket server started on ws://localhost:{ws_port}"
-            )
-        else:
-            logger.error("Failed to start live data WebSocket server")
-            ws_port = 0
+    except Exception as exc:
+        logger.error(f"Failed publishing live measurement {measurement_id}: {exc}")
+        return 0
 
-    # Register in database if available
-    if live_db and ws_port > 0 and disk_path:
-        try:
-            live_db.init_database()
-            ws_url = f"ws://localhost:{ws_port}"
-            started_at = datetime.datetime.utcnow().isoformat()
-            live_db.register_measurement(
-                measurement_id=measurement_id,
-                fpath=disk_path,
-                ws_url=ws_url,
-                ws_port=ws_port,
-                started_at=started_at,
-            )
-            logger.info(f"Registered measurement {measurement_id} in database")
-        except Exception as e:
-            logger.warning(f"Failed to register measurement in database: {e}")
-
-    return ws_port
+    logger.info(f"Live measurement {measurement_id} published at {registration.ws_url}")
+    return registration.ws_port
 
 
 def _find_available_port(start_port: int, max_attempts: int = 100) -> int:
-    """Find an available port starting from start_port."""
+    """
+    Find an available local TCP port in a bounded range.
+
+    Args:
+        start_port (int): First port to probe.
+        max_attempts (int): Number of consecutive ports to probe.
+
+    Returns:
+        int: First available port, or *start_port* if every probe fails.
+
+    """
     for port in range(start_port, start_port + max_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
@@ -115,49 +238,25 @@ def _find_available_port(start_port: int, max_attempts: int = 100) -> int:
     return start_port
 
 
-def get_memory_store(measurement_id: str) -> Optional[zarr.MemoryStore]:
-    entry = LIVE_MEMORY_STORES.get(measurement_id)
-    if isinstance(entry, LiveDatasetInfo):
-        return entry.store
-    return entry
+def _unregister_memory_store(measurement_id: str) -> None:
+    """
+    Stop publishing a live measurement through Qimchi Connect.
 
+    Closing the publication also removes its snapshot provider and marks its
+    discovery record as ended. Failures are logged so measurement finalisation
+    is not masked by cleanup errors.
 
-def unregister_memory_store(measurement_id: str) -> None:
-    LIVE_MEMORY_STORES.pop(measurement_id, None)
+    Args:
+        measurement_id (str): Identifier of the publication to close.
 
-    # Mark as ended in database
-    if live_db:
-        try:
-            ended_at = datetime.datetime.utcnow().isoformat()
-            live_db.end_measurement(measurement_id, ended_at)
-            logger.info(f"Marked measurement {measurement_id} as ended in database")
-        except Exception as e:
-            logger.warning(f"Failed to mark measurement as ended in database: {e}")
-
-
-def get_live_dataset_info(measurement_id: str) -> Optional[LiveDatasetInfo]:
-    """Return LiveDatasetInfo for the given measurement if available."""
-
-    entry = LIVE_MEMORY_STORES.get(measurement_id)
-    if isinstance(entry, LiveDatasetInfo):
-        return entry
-    if entry is not None:
-        return LiveDatasetInfo(store=entry)
-
-    return None
-
-
-def list_live_measurements(include_registry: bool = True) -> Dict[str, LiveDatasetInfo]:
-    """Return mapping of measurement id to LiveDatasetInfo."""
-
-    results: Dict[str, LiveDatasetInfo] = {}
-    for measurement_id, entry in LIVE_MEMORY_STORES.items():
-        if isinstance(entry, LiveDatasetInfo):
-            results[measurement_id] = entry
-        else:
-            results[measurement_id] = LiveDatasetInfo(store=entry)
-
-    return results
+    """
+    try:
+        # Stops advertising the measurement, drops its cached snapshot, and
+        # marks the discovery record ended.
+        if close_live_measurement(measurement_id):
+            logger.info(f"Stopped publishing live measurement {measurement_id}")
+    except Exception as e:
+        logger.warning(f"Failed closing live measurement {measurement_id}: {e}")
 
 
 bar = None
@@ -171,6 +270,13 @@ def _sanitize_for_json(obj):
     parameter caches (for example ``QDac2Trigger_Context`` after a sweep).
     Preserve ordinary JSON values and stringify unsupported objects rather
     than failing the whole measurement metadata export.
+
+    Args:
+        obj: Snapshot value to sanitize.
+
+    Returns:
+        A JSON-compatible value.
+
     """
     if isinstance(obj, np.ndarray):
         return obj.tolist()
@@ -193,6 +299,14 @@ def _sanitize_for_json(obj):
 
 
 class Station:
+    """
+    Collection of instruments and named parameters recorded by a measurement.
+
+    Args:
+        name (str): Human-readable station name.
+
+    """
+
     def __init__(self, name: str):
         self.name = name
         self.instruments = []
@@ -205,20 +319,55 @@ class Station:
         param: Parameter | Sequence[Parameter],
         param_type: str = "gate",
     ):
+        """
+        Add a named parameter to the station.
+
+        A sequence is represented by a
+        :class:`~qcutils.parameters.MultiChannelParameter`; a single QCoDeS
+        parameter is aliased with :class:`~qcutils.parameters.ParameterMixin`.
+
+        Args:
+            name (str): Name used in measurement metadata and datasets.
+            label (str): Human-readable label.
+            param (Parameter | Sequence[Parameter]): Parameter or channels to
+                register.
+            param_type (str): Parameter category stored in snapshots. Defaults
+                to ``"gate"``.
+
+        Returns:
+            ParameterMixin | MultiChannelParameter: Registered station
+                parameter.
+
+        Raises:
+            ValueError: If another station parameter already uses *name*.
+
+        """
         if isinstance(param, Sequence):
             pm = MultiChannelParameter(param, name, label, param_type)
         else:
             pm = ParameterMixin(param, name, label, param_type)
 
-        if pm in self.parameters:
+        # Compare by name, not by wrapper identity.
+        if any(existing.name == pm.name for existing in self.parameters):
             raise ValueError(
                 f"Parameter {pm.name} already exists in station {self.name}"
             )
-        else:
-            self.parameters.append(pm)
+
+        self.parameters.append(pm)
         return pm
 
     def remove_parameter(self, pm: ParameterMixin):
+        """
+        Remove a previously registered parameter.
+
+        Args:
+            pm (ParameterMixin): Parameter returned by
+                :meth:`add_parameter`.
+
+        Raises:
+            ValueError: If *pm* is not registered with this station.
+
+        """
         if pm in self.parameters:
             self.parameters.remove(pm)
         else:
@@ -226,6 +375,11 @@ class Station:
 
 
 class Measurement:
+    """
+    Configure, acquire, publish, and persist one QCUtils measurement.
+
+    """
+
     def __init__(
         self,
         wafer_id: str,
@@ -240,17 +394,32 @@ class Measurement:
         nc_snapshot_during_run: bool = False,  # @Spandan - edit as needed
         git_repo: str = "~/.measurement-hashes",
     ):
-        """Measurement class for sweeping and storing data
+        """
+        Create a measurement and reserve its output paths.
 
         Args:
-            wafer_id (str): ID of the wafer
-            device_type (str): Type of the device
-            sample_name (str): Name of the sample
-            experiment_name (str): Name of the experiment
-            data_location (str): Location of the data to be stored
-            save_interval (float, optional): Period for writing to the disk. Defaults to 0.1.
-            nc_snapshot_during_run (bool, optional): Persist best-effort .nc snapshots during run. Defaults to True.
-            git_repo (str, optional): Location of the git repository to store the measurement hashes. Defaults to "~/.measurement-hashes".
+            wafer_id (str): Wafer identifier used in the output path.
+            device_type (str): Device type used in the output path.
+            sample_name (str): Sample name used in the output path.
+            experiment_name (str): Experiment name used in the output path.
+            station (Station): Instruments and parameters to snapshot.
+            data_location (str): Root directory for completed measurements.
+            metadata (dict): User metadata stored on the resulting dataset.
+            fridge_name (str): Optional suffix for the measurement-hash
+                repository. Defaults to an empty string.
+            save_interval (float): Minimum time in seconds between live and disk
+                checkpoints. Defaults to 0.1.
+            nc_snapshot_during_run (bool): Also write best-effort netCDF
+                snapshots during acquisition. Defaults to False.
+            git_repo (str): Repository used to record measurement hashes.
+                Defaults to ``"~/.measurement-hashes"``.
+
+        Notes:
+            Completed data is written below
+            ``data_location/wafer_id/device_type/sample_name/experiment_name``.
+            Live recovery checkpoints are temporary and stored under the
+            QCUtils application directory.
+
         """
         self.wafer_id = wafer_id
         self.device_type = device_type
@@ -283,7 +452,13 @@ class Measurement:
             self.id = f"{sorted(data_files)[-1] + 1}-{uuid.uuid4()}"
 
         self.data = f"{self.datalogging}/{self.id}.nc"
-        self.live_data = f"{self.datalogging}/{self.id}.zarr"
+        self.live_data = str(_live_store_root() / f"{self.id}.zarr")
+        try:
+            _target_marker(Path(self.live_data)).write_text(
+                str(Path(self.data).resolve()), encoding="utf-8"
+            )
+        except Exception as exc:
+            logger.warning(f"Could not record the recovery target: {exc}")
         self.arr = None
         self.memory_store = None
         self.disk_store = None
@@ -292,6 +467,14 @@ class Measurement:
         logger.info(f"Measurement Location: {self.data}")
 
     def get_installed_packages(self):
+        """
+        Return installed Python distributions as requirements text.
+
+        Returns:
+            str: ``name==version`` lines suitable for dataset metadata, or an
+                empty string when neither package-listing command is available.
+
+        """
         # uv-created environments do not necessarily contain the pip module.
         # Prefer uv, then quietly fall back to pip for non-uv environments.
         commands = (
@@ -311,14 +494,18 @@ class Measurement:
         return ""
 
     def _make_dataarray(self, sweeps, dependent):
-        """Create a dataarray for the dependent parameter
+        """
+        Preallocate a NaN-filled data array for one dependent parameter.
 
         Args:
-            sweeps (Sequence[Sweep]): List of sweep objects
-            dependent (Parameter): QCoDeS parameter
+            sweeps (Sequence[Sweep]): Sweeps defining the array dimensions and
+                coordinates.
+            dependent (Parameter): Measured QCoDeS parameter represented by the
+                array.
 
         Returns:
-            xr.DataArray: DataArray for the dependent parameter
+            xr.DataArray: Data array with parameter and coordinate metadata.
+
         """
         data_array = xr.DataArray(
             data=np.empty(
@@ -346,11 +533,19 @@ class Measurement:
         return data_array
 
     def _make_dataset(self, sweeps: Sequence[Union[Sweep, dict]], dependents: list):
-        """Create an xarray dataset for the measurement
+        """
+        Preallocate the measurement dataset and its acquisition metadata.
 
         Args:
-            sweeps (Sequence[Sweep]): List of sweep objects
-            dependents (list): List of dependent QCoDeS parameters
+            sweeps (Sequence[Sweep | dict]): Slow sweeps, optionally followed by
+                a buffered-sweep tree.
+            dependents (list): Unbuffered QCoDeS parameters to include as data
+                variables.
+
+        Returns:
+            xr.Dataset: Dataset containing NaN-filled dependent arrays and all
+                sweep coordinates.
+
         """
         if isinstance(sweeps[-1], dict):
             buffered_sweep = sweeps[-1]
@@ -421,7 +616,17 @@ class Measurement:
         return ds
 
     def _push_gitlab(self, dataset, data_hash):
-        """Push the data to the gitlab repository"""
+        """
+        Record a measurement hash and metadata in the remote hash repository.
+
+        The record is committed on the cryostat branch and pushed to the
+        configured Git repository. The measurement data itself is not pushed.
+
+        Args:
+            dataset (xr.Dataset): Final dataset whose attributes are recorded.
+            data_hash (str): Digest of the persisted measurement data.
+
+        """
         git_ssh_identity_file = str(Path.home() / ".ssh" / "id_rsa")
         known_hosts = str(Path.home() / ".ssh" / "known_hosts")
 
@@ -486,7 +691,13 @@ class Measurement:
 
     def _compute_data_hash(self) -> str:
         """
-        Util function to compute SHA256 hash for the persisted measurement output.
+        Compute the SHA-256 digest of the persisted measurement output.
+
+        Legacy directory outputs are hashed recursively; current netCDF outputs
+        are read in chunks.
+
+        Returns:
+            str: Hexadecimal SHA-256 digest.
 
         """
         data_path = Path(self.data)
@@ -500,22 +711,74 @@ class Measurement:
 
         return digest.hexdigest()
 
+    def _rescue_live_store(self) -> bool:
+        """
+        Preserve a live store whose measurement failed to export.
+
+        Returns:
+            bool: Whether the conversion produced ``self.data`` after all, so
+                the caller can treat the export as having succeeded.
+
+        """
+        store = Path(self.live_data)
+        if not store.exists():
+            logger.error(
+                f"Measurement {self.id} exported nothing and has no live store "
+                "to fall back on. Its data is lost."
+            )
+            return False
+
+        rescued = Path(self.datalogging) / store.name
+        try:
+            shutil.move(str(store), str(rescued))
+            _target_marker(store).unlink(missing_ok=True)
+        except Exception as exc:
+            logger.error(
+                f"Measurement {self.id} failed its netCDF export and its live "
+                f"store could not be moved out of {store}: {exc}. Recover it by "
+                "hand -- the next run prunes stores left there."
+            )
+            return False
+
+        try:
+            _convert_live_store(self.data, overwrite=True)
+        except Exception as exc:
+            logger.error(
+                f"Measurement {self.id} failed its netCDF export, and the live "
+                f"store kept at {rescued} could not be converted either: {exc}. "
+                "Convert it with `qcutils.dataset.convert` once the cause is "
+                "fixed. It is very likely incomplete."
+            )
+            return False
+
+        logger.error(
+            f"Measurement {self.id} failed its netCDF export and was recovered "
+            f"from its live store into {self.data}. It is very likely "
+            "incomplete."
+        )
+        return True
+
     def _finalize_disk_artifacts(
         self, dataset: Optional[xr.Dataset] = None, verbose: bool = False
     ) -> Optional[xr.Dataset]:
         """
-        Best-effort finalize to a single netCDF file and update live DB path.
-        This is called on normal completion and interruption/error paths.
+        Export the latest dataset to netCDF and remove temporary live artifacts.
+
+        The supplied dataset is preferred, followed by the current in-memory
+        dataset and then the disk checkpoint. Export uses a temporary file and
+        atomic replacement. If that fails, the live Zarr store is moved beside
+        the intended target and converted there. Successful export updates the
+        path advertised by Qimchi Connect before removing the live store and its
+        recovery marker.
 
         Args:
-            dataset (Optional[xr.Dataset]): The dataset to persist. If None, will attempt to load from live Zarr or in-memory store.
-            verbose (bool): Whether to log detailed information during finalization.
+            dataset (Optional[xr.Dataset]): Dataset to persist. If omitted, use
+                the newest available measurement state.
+            verbose (bool): Log successful export details. Defaults to False.
 
         Returns:
-            Optional[xr.Dataset]: The dataset that was finalized, or None if finalization failed.
-
-        Raises:
-            Exception: If there is an error during finalization, it will be logged but not raised.
+            Optional[xr.Dataset]: Exported dataset, or ``None`` if no export
+                could be completed.
 
         """
         # self.arr is the authoritative, most recent in-memory state during a
@@ -550,39 +813,38 @@ class Measurement:
                 logger.info(f"[measurement] Exported final dataset to {self.data}")
         except Exception as e:
             logger.error(f"Failed exporting final dataset to netCDF: {e}")
+            nc_exported = self._rescue_live_store()
 
         if nc_exported:
             nc_path = str(Path(self.data).resolve())
-            if live_db:
-                try:
-                    live_db.update_measurement_path(self.id, nc_path)
-                except Exception as e:
-                    logger.warning(f"Failed updating final measurement path in DB: {e}")
-
-            entry = LIVE_MEMORY_STORES.get(self.id)
-            if isinstance(entry, LiveDatasetInfo):
-                entry.disk_path = nc_path
+            try:
+                update_live_disk_path(self.id, nc_path)
+            except Exception as e:
+                logger.warning(f"Failed updating the advertised measurement path: {e}")
 
             try:
                 if Path(self.live_data).exists():
                     shutil.rmtree(self.live_data)
+                _target_marker(Path(self.live_data)).unlink(missing_ok=True)
+                reset_disk_persist_cache(self.live_data)
             except Exception as e:
                 logger.warning(
                     f"Failed removing temporary zarr store at {self.live_data}: {e}"
                 )
 
+        if not nc_exported:
+            return None
+
         return export_dataset
 
     def _print_table(self, snapshot_table, headers):
         """
-        Print out a parameter snapshot table in a tabular shape.
+        Print aligned measurement metadata rows.
 
-        Parameters
-        ----------
-        snapshot_table : list[list[str]]
-            Table rows, e.g. [[up1, Up Plunger 1, -1.0, V], ...]
-        headers : list[str]
-            Column headers, e.g. ["Name", "Label", "Value", "Unit"]
+        Args:
+            snapshot_table (list[list]): Rows to print.
+            headers (list[str]): Column headings.
+
         """
 
         # Convert everything to string
@@ -617,14 +879,34 @@ class Measurement:
         verbose: bool = False,
         no_hashing: bool = False,
     ):
-        """Run the measurement
+        """
+        Acquire a measurement and finalize it to netCDF.
 
         Args:
-            sweeps (Union[Sweep, CircularSweep, Sequence[Sweep]]): Sweep object or list of sweep objects
-            dependents (list): List of dependent QCoDeS parameters
-            interrupt (Callable, optional): Function to interrupt the measurement. Defaults to None.
-            rampdown_on_interrupt (bool, optional): Ramp down the instruments on interrupt. Defaults to False.
-            no_hashing (bool, optional): Skip git hashing of the measurement. Defaults to False. Only set to True for unimportant software or hardware tests!
+            sweeps (Sweep | CircularSweep | Sequence[Sweep | dict]): A sweep,
+                nested slow sweeps, or slow sweeps followed by one buffered-tree
+                mapping.
+            dependents (list): QCoDeS parameters read at every unbuffered point.
+                Buffered dependents belong in the buffered-tree mapping instead.
+            interrupt (Callable): Callback checked during acquisition. A truthy
+                result interrupts the run. Defaults to always false.
+            rampdown_on_interrupt (bool): Ramp swept parameters to zero after a
+                ``KeyboardInterrupt``. Defaults to False.
+            verbose (bool): Log checkpoint operations. Defaults to False.
+            no_hashing (bool): Skip recording the completed file's hash in the
+                measurement-hash repository. Defaults to False.
+
+        Raises:
+            InterruptedError: If the *interrupt* callback requests a stop.
+            KeyboardInterrupt: If the user interrupts acquisition.
+            RuntimeError: If acquisition returns without visiting every
+                expected point.
+
+        Notes:
+            Partial data is finalized on interruption or failure before the
+            original exception is re-raised. The method returns ``None``; use
+            :attr:`data` for the completed file path.
+
         """
         if not isinstance(sweeps, Sequence):
             sweeps = [sweeps]
@@ -688,7 +970,7 @@ class Measurement:
 
         if buffered_sweep:
             self.buffered_dependents_tree = {}
-            fetch_dependents_tree(buffered_sweep, state=self.buffered_dependents_tree)
+            _fetch_dependents_tree(buffered_sweep, state=self.buffered_dependents_tree)
             self.buffered_dependents_tree = self.buffered_dependents_tree[
                 "dependent_tree"
             ]
@@ -749,9 +1031,12 @@ class Measurement:
         if verbose:
             logger.info("[measurement] Seeded dataset to in-memory store")
         zarr.copy_store(self.memory_store, self.disk_store, if_exists="replace")
+        # Checkpoints track what they have already written; this seeding copy
+        # bypasses that, so start the run from a known-empty cache.
+        reset_disk_persist_cache(self.disk_store)
         if verbose:
             logger.info("[measurement] Seeded dataset to disk .zarr store")
-        register_memory_store(
+        _register_memory_store(
             self.id, self.memory_store, disk_path=str(Path(self.live_data).resolve())
         )
         logger.debug(f"Live Memory Location: memory://{self.id}")
@@ -793,7 +1078,7 @@ class Measurement:
                 unit="point",
             )
 
-            dataset = stepper(
+            dataset = _stepper(
                 dataset=self.arr,
                 data_location=self.live_data,
                 depth=len(sweeps),
@@ -842,21 +1127,28 @@ class Measurement:
         except KeyboardInterrupt:
             logger.warning("Measurement interrupted; stopping buffered instruments")
             if buffered_sweep is not None:
-                abort_instruments(buffered_sweep)
+                _abort_instruments(buffered_sweep)
 
             if rampdown_on_interrupt:
                 logger.info("Ramping down swept parameters")
                 rampdown_sweeps = [
-                    Sweep(sweep.parameter, sweep.parameter(), 0.0, num=100, delay=1e-2)
+                    Sweep(parameter, parameter(), 0.0, num=100, delay=1e-2)
                     for sweep in sweeps
+                    for parameter in _sweep_parameters(sweep)
                 ]
-                for sweep in self.buffered_dependents_tree:
-                    for sw in self.buffered_dependents_tree[sweep]["sweeps"]:
-                        rampdown_sweeps.append(
-                            Sweep(
-                                sw.parameter, sw.parameter(), 0.0, num=100, delay=1e-2
+                buffered_tree = getattr(self, "buffered_dependents_tree", None) or {}
+                for entry in buffered_tree.values():
+                    for sw in entry["sweeps"]:
+                        for parameter in _sweep_parameters(sw):
+                            rampdown_sweeps.append(
+                                Sweep(
+                                    parameter,
+                                    parameter(),
+                                    0.0,
+                                    num=100,
+                                    delay=1e-2,
+                                )
                             )
-                        )
                 sweeper(rampdown_sweeps)
             raise
         except Exception as e:
@@ -870,7 +1162,7 @@ class Measurement:
                     pass
             if not finalized:
                 self._finalize_disk_artifacts(dataset=dataset, verbose=verbose)
-            unregister_memory_store(self.id)
+            _unregister_memory_store(self.id)
 
 
 def run(
@@ -891,7 +1183,42 @@ def run(
     *args,
     **kwargs,
 ):
-    """Helper function to run a measurement, refer to the Measuremment class for more details"""
+    """
+    Create and run a :class:`Measurement` in one call.
+
+    Args:
+        sweeps (Sweep | CircularSweep | Sequence[Sweep | dict]): Sweep
+            definition accepted by :meth:`Measurement.run`.
+        dependents (list): Unbuffered QCoDeS parameters to record.
+        wafer_id (str): Wafer identifier used in the output path.
+        device_type (str): Device type used in the output path.
+        sample_name (str): Sample name used in the output path.
+        experiment_name (str): Experiment name used in the output path.
+        metadata (dict): Extra metadata stored on the dataset.
+        station (Station): Instruments and parameters to snapshot.
+        data_location (str): Root directory for completed measurements.
+            Defaults to ``"./test/"``.
+        interrupt (Callable): Callback checked during acquisition.
+        rampdown_on_interrupt (bool): Ramp swept parameters to zero after a
+            ``KeyboardInterrupt``. Defaults to False.
+        location_return (bool): Return the output path after the run. Defaults
+            to False.
+        verbose (bool): Log checkpoint operations. Defaults to False.
+        no_hashing (bool): Skip recording the completed file's hash. Defaults
+            to False.
+        *args: Additional positional arguments forwarded to
+            :class:`Measurement`.
+        **kwargs: Additional keyword arguments forwarded to
+            :class:`Measurement`.
+
+    Returns:
+        str | None: Final netCDF path when *location_return* is true; otherwise
+            ``None``.
+
+    Raises:
+        ValueError: If *station* is not provided.
+
+    """
     if not station:
         raise ValueError("Station is required")
 
