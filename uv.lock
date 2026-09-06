@@ -659,22 +659,6 @@ wheels = [
 ]
 
 [[package]]
-name = "drivers"
-version = "2.2.0"
-source = { git = "https://gitlab.com/squad-lab/measurements/drivers.git#ef7b05b720a7ed351d9e5bacb2cc2ade89c5f7bc" }
-dependencies = [
-    { name = "ipykernel" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "pyvisa" },
-    { name = "pyvisa-py" },
-    { name = "qcodes" },
-    { name = "scipy" },
-    { name = "zhinst" },
-    { name = "zhinst-qcodes" },
-]
-
-[[package]]
 name = "executing"
 version = "2.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1935,8 +1919,30 @@ wheels = [
 ]
 
 [[package]]
+name = "qcdrivers"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ipykernel" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyvisa" },
+    { name = "pyvisa-py" },
+    { name = "qcodes" },
+    { name = "requests" },
+    { name = "scipy" },
+    { name = "zhinst" },
+    { name = "zhinst-qcodes" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fa/24/f05e65d40c263274de2bb4a519ec1895b533031d1baf007205343d8ad3e3/qcdrivers-0.1.0.tar.gz", hash = "sha256:7d5eee8242fd89e9cd2315195f60193872dee2c78d5413e313751a2447655094", size = 575687, upload-time = "2026-09-06T16:34:22.553Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/75/2a/6d88fd8b8119ffca1207424c84e0c97aa136915137d3b2eadff376547832/qcdrivers-0.1.0-py3-none-any.whl", hash = "sha256:f32f764d24a416a1f2b0f5d087a9c109ce147742c2c563ca0072d7dae230b031", size = 141051, upload-time = "2026-09-06T16:34:21.073Z" },
+]
+
+[[package]]
 name = "qcodes"
-version = "0.54.4"
+version = "0.59.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "broadbean" },
@@ -1965,9 +1971,9 @@ dependencies = [
     { name = "websockets" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/34/3b/38c613958911c7ea14d852632042e834749558416eea6b93761802bdf6da/qcodes-0.54.4.tar.gz", hash = "sha256:949cf3907fda1af176f545ee7aa3853119204a4c34beafef3fd569aa46521d9a", size = 817999, upload-time = "2025-12-12T17:39:33.878Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/5e/bbc3fe15322015aba448332e7494105235d129c0879a5da778bb65464061/qcodes-0.59.0.tar.gz", hash = "sha256:249823792049640820ccad1725d13a8088099598d97db501d42ab59d979afab8", size = 836774, upload-time = "2026-08-24T09:15:33.863Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/ee/a08a9240e25b132f1becc86609ccf98f1261a06370aec3ef6458519962e7/qcodes-0.54.4-py3-none-any.whl", hash = "sha256:29df1dfe9b84ae38c03342eb035e7c0523ff3824a51ff45c858cbb04212a7162", size = 977283, upload-time = "2025-12-12T17:39:31.669Z" },
+    { url = "https://files.pythonhosted.org/packages/15/d1/1465be4bd6c6edd302c4dae5f6b90f1a5c5260e6ae09a1b91427cd9bea9b/qcodes-0.59.0-py3-none-any.whl", hash = "sha256:4beadd8821d9f67de72f265ae167170f889052c2b01979c6bc771c030def419a", size = 975859, upload-time = "2026-08-24T09:15:32.007Z" },
 ]
 
 [[package]]
@@ -1994,13 +2000,13 @@ version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "checksumdir" },
-    { name = "drivers" },
     { name = "gitpython" },
     { name = "ipykernel" },
     { name = "numcodecs" },
     { name = "pillow" },
     { name = "pyvisa" },
     { name = "pyvisa-py" },
+    { name = "qcdrivers" },
     { name = "qcodes" },
     { name = "qcodes-contrib-drivers" },
     { name = "qimchi-connect" },
@@ -2039,7 +2045,6 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "checksumdir", specifier = ">=1.2.0" },
-    { name = "drivers", git = "https://gitlab.com/squad-lab/measurements/drivers.git" },
     { name = "gitpython", specifier = ">=3.1.44" },
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "numcodecs", specifier = "==0.15.0" },
@@ -2051,7 +2056,8 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=5" },
     { name = "pyvisa", specifier = ">=1.14.1" },
     { name = "pyvisa-py", specifier = ">=0.7.2" },
-    { name = "qcodes", specifier = ">=0.45" },
+    { name = "qcdrivers", specifier = ">=0.1.0" },
+    { name = "qcodes", specifier = ">=0.59.0" },
     { name = "qcodes-contrib-drivers", specifier = ">=0.23.0" },
     { name = "qimchi-connect", specifier = ">=0.1.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.6" },

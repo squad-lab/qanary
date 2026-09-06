@@ -20,7 +20,7 @@ keywords = ["qcodes"]
 dependencies = [
   "checksumdir>=1.2.0",
   "gitpython>=3.1.44",
-  "qcodes>=0.45", # ==0.45 if plottr inspectr should be run in the same env
+  "qcodes>=0.59.0",
   "scipy>=1.15.2",
   "ipykernel>=7.1.0",
   "setuptools>=78.1.0",
@@ -34,14 +34,7 @@ dependencies = [
   "pyvisa-py>=0.7.2",
   "zeroconf>=0.147.2",
   "qimchi-connect>=0.1.0",
-  # TODO: publish `drivers` to PyPI, then publish QCUtils there too.
-  # `drivers` resolves from GitLab through [tool.uv.sources] below, which is a
-  # uv-local override: it is NOT written into the built wheel metadata, so a
-  # downstream `pip install qcutils` would resolve the unrelated PyPI package
-  # of the same name. PyPI rejects direct-URL requirements, so the git URL
-  # cannot be encoded here either. Until `drivers` is on PyPI, QCUtils is
-  # installed from git and the `pypi` CI job stays commented out.
-  "drivers",
+  "qcdrivers>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -80,7 +73,6 @@ package = true
 
 [tool.uv.sources]
 qcutils = { workspace = true }
-drivers = { git = "https://gitlab.com/squad-lab/measurements/drivers.git" }
 
 [build-system]
 requires = ["poetry-core"]
