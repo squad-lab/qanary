@@ -1,5 +1,7 @@
 # %%
-from drivers.squad.helpers.helpers import Lockin
+from qcdrivers.buffered.qdevil import NodeQDAC2
+from qcdrivers.buffered.zurich import NodeMFLI
+from qcdrivers.squad.helpers.helpers import Lockin
 from qcodes.instrument import Instrument
 from qcodes.instrument_drivers.mock_instruments import (
     DummyInstrument,
@@ -8,7 +10,6 @@ from qcodes.instrument_drivers.mock_instruments import (
 from qcodes_contrib_drivers.drivers.QDevil.QDAC2 import QDac2
 
 from qcutils import measure
-from qcutils.buffered.instruments import NodeMFLI, NodeQDAC2
 from qcutils.measure import Station
 from qcutils.sweep import Sweep
 

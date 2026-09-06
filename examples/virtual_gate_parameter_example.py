@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from drivers.squad.helpers.helpers import ShellInstrument
+from qcdrivers.squad import ShellInstrument
 
 from qcutils.measure import Station
 from qcutils.parameters import VirtualGate

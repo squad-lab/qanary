@@ -1,4 +1,4 @@
-from drivers.squad.helpers.helpers import ShellInstrument
+from qcdrivers.squad import ShellInstrument
 
 from qcutils.parameters import MultiChannelParameter
 

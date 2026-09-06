@@ -4,11 +4,11 @@ import time
 from time import sleep
 
 import numpy as np
-from drivers.basel.dacs.dacs import BaselDac2
+from qcdrivers.basel.dacs.dacs import BaselDac2
+from qcdrivers.buffered.basel import NodeBaselDAC
 from qcodes.instrument import Instrument
 
 from qcutils import measure
-from qcutils.buffered.instruments import NodeBaselDAC
 from qcutils.measure import Station
 from qcutils.sweep import Sweep
 

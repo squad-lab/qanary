@@ -3,13 +3,14 @@
 import time
 
 import numpy as np
-from drivers.basel.dacs.dacs import BaselDac2
-from drivers.squad.helpers.helpers import Lockin
-from qcodes import Parameter
+from qcdrivers.basel.dacs.dacs import BaselDac2
+from qcdrivers.buffered.basel import NodeBaselDAC
+from qcdrivers.buffered.zurich import NodeUHFLI
+from qcdrivers.squad.helpers.helpers import Lockin
 from qcodes.instrument import Instrument
+from qcodes.parameters import Parameter
 
 from qcutils import measure
-from qcutils.buffered.instruments import NodeBaselDAC, NodeUHFLI
 from qcutils.measure import Station
 from qcutils.sweep import Sweep
 

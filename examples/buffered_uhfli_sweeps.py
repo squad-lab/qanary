@@ -2,11 +2,11 @@
 
 import time
 
-from drivers.squad.helpers.helpers import Lockin
+from qcdrivers.buffered.zurich import NodeUHFLI
+from qcdrivers.squad.helpers.helpers import Lockin
 from qcodes.instrument import Instrument
 
 from qcutils import measure
-from qcutils.buffered.instruments import NodeUHFLI
 from qcutils.measure import Station
 from qcutils.sweep import Sweep
 

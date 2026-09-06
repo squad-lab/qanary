@@ -2,11 +2,12 @@
 
 import time
 
-from drivers.squad.helpers.helpers import Delay, Lockin
+from qcdrivers.buffered.squad import NodeDelay
+from qcdrivers.buffered.zurich import NodeMFLI, NodeUHFLI
+from qcdrivers.squad.helpers.helpers import Delay, Lockin
 from qcodes.instrument import Instrument
 
 from qcutils import measure
-from qcutils.buffered.instruments import NodeDelay, NodeMFLI, NodeUHFLI
 from qcutils.measure import Station
 from qcutils.sweep import Sweep
 

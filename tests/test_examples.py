@@ -46,11 +46,15 @@ def test_the_example_parses(path: Path):
     compile(source, str(path), "exec")
 
 
+CHECKED_PACKAGES = ("qcutils", "qcdrivers")
+
+
 @pytest.mark.parametrize("path", EXAMPLES, ids=example_ids())
-def test_what_the_example_imports_from_qcutils_still_exists(path: Path):
+def test_what_the_example_imports_still_exists(path: Path):
     """
     Examples are the most likely thing to be left behind by a rename, since
-    nothing imports them. Check every `from qcutils... import X` resolves.
+    nothing imports them. Check every `from qcutils... import X` and
+    `from qcdrivers... import X` resolves.
 
     """
     import importlib
@@ -60,11 +64,16 @@ def test_what_the_example_imports_from_qcutils_still_exists(path: Path):
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom) or node.module is None:
             continue
-        if node.module != "qcutils" and not node.module.startswith("qcutils."):
+        root = node.module.split(".")[0]
+        if root not in CHECKED_PACKAGES:
             continue
-        module = importlib.import_module(node.module)
+        try:
+            module = importlib.import_module(node.module)
+        except ImportError:
+            missing.append(f"{node.module} (module not found)")
+            continue
         for alias in node.names:
             if not hasattr(module, alias.name):
                 missing.append(f"{node.module}.{alias.name}")
 
-    assert not missing, f"{path.name} imports names qcutils no longer has: {missing}"
+    assert not missing, f"{path.name} imports names that no longer exist: {missing}"
