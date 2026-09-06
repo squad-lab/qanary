@@ -1,13 +1,9 @@
-
 import matplotlib.pyplot as plt
 import numpy as np
-
-from qcutils.parameters import VirtualGate
-from qcutils.measure import Station
-
 from drivers.squad.helpers.helpers import ShellInstrument
 
-
+from qcutils.measure import Station
+from qcutils.parameters import VirtualGate
 
 dummy = ShellInstrument("dummy", {})
 dummy2 = ShellInstrument("dummy2", {})
@@ -44,23 +40,19 @@ st = Station("test")
 st.instruments = [dummy, dummy2]
 
 
-
-
-
-
-#rotation by a certain angle, an offset by certain coordinates
+# rotation by a certain angle, an offset by certain coordinates
 theta = np.deg2rad(30)
 
 vg_parallel = VirtualGate(
     gates=[dummy.ch1, dummy.ch2],
-    name ="vg_parallel",
+    name="vg_parallel",
     factors=[np.cos(theta), np.sin(theta)],
     offsets=[1, 1],
 )
 
 vg_perpendicular = VirtualGate(
     gates=[dummy.ch1, dummy.ch2],
-    name ="vg_perpendicular",
+    name="vg_perpendicular",
     factors=[-np.sin(theta), np.cos(theta)],
     offsets=[1, 1],
 )
@@ -82,10 +74,10 @@ fig, ax = plt.subplots()
 ax.plot(x_par, y_par, "o-")
 ax.plot(x_perp, y_perp, "o-")
 
-ax.set_aspect('equal', adjustable='box')
+ax.set_aspect("equal", adjustable="box")
 ax.grid()
 
-#plt.show()
+# plt.show()
 
 print(vg_parallel.snapshot())
 print(vg_parallel.instrument)
@@ -95,9 +87,13 @@ print(vg_parallel.name)
 print(vg_parallel.label)
 
 
-
-
-def virtual_gate_2d(gates, P1: tuple[float, float], P2: tuple[float, float], name: str, label: str = None):
+def virtual_gate_2d(
+    gates,
+    P1: tuple[float, float],
+    P2: tuple[float, float],
+    name: str,
+    label: str = None,
+):
     # set P1 = (0, 0) for just a rotation and P2 for the direction
 
     Vg = VirtualGate(
@@ -114,8 +110,8 @@ def virtual_gate_2d(gates, P1: tuple[float, float], P2: tuple[float, float], nam
 
 Vg = virtual_gate_2d(
     gates=[dummy.ch1, dummy.ch2],
-    P1=(1,1),
-    P2=(2,3),
+    P1=(1, 1),
+    P2=(2, 3),
     name="vg_2d",
     label="Virtual Gate 2D",
 )
@@ -137,8 +133,7 @@ print(Vg.instrument)
 
 ax.plot(x, y, "o-")
 
-ax.set_aspect('equal', adjustable='box')
+ax.set_aspect("equal", adjustable="box")
 ax.grid()
 
 plt.show()
-
