@@ -22,7 +22,7 @@ commands:
 | Tests with coverage | `uv run pytest --cov` |
 | Lint (includes import sorting) | `uv run ruff check .` |
 | Format | `uv run ruff format .` |
-| Build the docs | `uv sync --group docs && uv run sphinx-build -M html docs/source docs/build` |
+| Build the docs | `uv sync --extra dev --group docs && uv run sphinx-build -M html docs/source docs/build` |
 
 Ruff's configuration lives in `pyproject.toml`, and the pre-commit hooks use it
 directly, so a local run and CI agree. Import sorting comes from ruff's `I`
@@ -176,8 +176,8 @@ Malformed docstrings surface as Sphinx warnings rather than silent bad output,
 so build the docs after a substantial docstring change:
 
 ```bash
-uv sync --group docs
-uv run sphinx-build -W --keep-going -M html docs/source docs/build
+uv sync --extra dev --group docs
+uv run sphinx-build -M html docs/source docs/build -W --keep-going
 ```
 
 Watch for reStructuredText traps inside docstrings. Indented text that is meant

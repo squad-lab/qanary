@@ -46,6 +46,7 @@ Home <self>
 installation.md
 tutorials/tutorials_index.md
 api/index
+contributing.md
 development.md
 changelog.md
 ```
