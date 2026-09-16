@@ -2,6 +2,29 @@
 
 <!-- version list -->
 
+## v0.11.0 (2026-09-16)
+
+### Chores
+
+- **lock**: Sync the Qanary release version
+  ([`8979ec1`](https://gitlab.com/squad-lab/qanary/-/commit/8979ec1debfcc16744e8868463889edc311d2449))
+
+### Continuous Integration
+
+- Apply ruff fixes on the branch instead of failing
+  ([`5db94f8`](https://gitlab.com/squad-lab/qanary/-/commit/5db94f8f95a6a88abcd67f7976254231a4384c8c))
+
+### Documentation
+
+- Add a contributing guide and publish it
+  ([`8695bc1`](https://gitlab.com/squad-lab/qanary/-/commit/8695bc1ceaefc7b97eb608ca024aea95227d36e1))
+
+### Features
+
+- Publish the contributing guide on the documentation site
+  ([`303cfe9`](https://gitlab.com/squad-lab/qanary/-/commit/303cfe9f36284b12821a599bab1a809fa4ffbffb))
+
+
 ## v0.10.1 (2026-09-06)
 
 ### Bug Fixes
