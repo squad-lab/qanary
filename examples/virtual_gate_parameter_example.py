@@ -39,19 +39,23 @@ dummy2.add_parameter(
 st = Station("test")
 st.instruments = [dummy, dummy2]
 
+dummy_ch1 = st.add_parameter("ch1", "Channel 1", dummy.ch1)
+dummy_ch2 = st.add_parameter("ch2", "Channel 2", dummy.ch2)
+
+dummy_chx = st.add_parameter("ch1", "Channel 1", dummy.ch1, override=True)
 
 # rotation by a certain angle, an offset by certain coordinates
 theta = np.deg2rad(30)
 
 vg_parallel = VirtualGate(
-    gates=[dummy.ch1, dummy.ch2],
+    gates=[dummy_ch1, dummy_ch2],
     name="vg_parallel",
     factors=[np.cos(theta), np.sin(theta)],
     offsets=[1, 1],
 )
 
 vg_perpendicular = VirtualGate(
-    gates=[dummy.ch1, dummy.ch2],
+    gates=[dummy_ch1, dummy_ch2],
     name="vg_perpendicular",
     factors=[-np.sin(theta), np.cos(theta)],
     offsets=[1, 1],
@@ -62,12 +66,12 @@ x_perp, y_perp = [], []
 
 for i in np.linspace(0, 10, 11):
     vg_parallel.set(i)
-    x_par.append(dummy.ch1())
-    y_par.append(dummy.ch2())
+    x_par.append(dummy_ch1())
+    y_par.append(dummy_ch2())
 
     vg_perpendicular.set(i)
-    x_perp.append(dummy.ch1())
-    y_perp.append(dummy.ch2())
+    x_perp.append(dummy_ch1())
+    y_perp.append(dummy_ch2())
 
 fig, ax = plt.subplots()
 
@@ -109,7 +113,7 @@ def virtual_gate_2d(
 
 
 Vg = virtual_gate_2d(
-    gates=[dummy.ch1, dummy.ch2],
+    gates=[dummy_ch1, dummy_ch2],
     P1=(1, 1),
     P2=(2, 3),
     name="vg_2d",
@@ -125,8 +129,8 @@ x, y = [], []
 
 for i in np.linspace(-10, 10, 21):
     Vg.set(i)
-    x.append(dummy.ch1())
-    y.append(dummy.ch2())
+    x.append(dummy_ch1())
+    y.append(dummy_ch2())
 
 print(Vg.snapshot())
 print(Vg.instrument)

@@ -317,6 +317,7 @@ class Station:
         label: str,
         param: Parameter | Sequence[Parameter],
         param_type: str = "gate",
+        override: bool = False,
     ):
         """
         Add a named parameter to the station.
@@ -332,13 +333,14 @@ class Station:
                 register.
             param_type (str): Parameter category stored in snapshots. Defaults
                 to ``"gate"``.
+            override (bool): Replace an existing parameter with the same
 
         Returns:
             ParameterMixin | MultiChannelParameter: Registered station
                 parameter.
 
         Raises:
-            ValueError: If another station parameter already uses *name*.
+            ValueError: If another station parameter already uses *name* and override is False.
 
         """
         if isinstance(param, Sequence):
@@ -347,10 +349,15 @@ class Station:
             pm = ParameterMixin(param, name, label, param_type)
 
         # Compare by name, not by wrapper identity.
-        if any(existing.name == pm.name for existing in self.parameters):
-            raise ValueError(
-                f"Parameter {pm.name} already exists in station {self.name}"
-            )
+        for i, existing in enumerate(self.parameters):
+            if existing.name == pm.name:
+                if not override:
+                    raise ValueError(
+                        f"Parameter {pm.name} already exists in station {self.name}"
+                    )
+
+                self.parameters[i] = pm
+                return pm
 
         self.parameters.append(pm)
         return pm
