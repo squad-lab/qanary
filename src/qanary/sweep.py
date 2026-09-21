@@ -389,6 +389,48 @@ class CircularSweep:
         self.delay = delay
         self.start_delay = start_delay
 
+class PointSweep:
+    def __init__(
+        self,
+        parameter: Parameter | Sequence[Parameter],
+        points: Sequence[int | float],
+        delay: float = 0.0,
+        start_delay: float = 0.0,
+    ) -> None:
+        """
+        Define a parameter sweep of a certain list of points that is not necessarily a ramp.
+
+        Args:
+            parameter (Parameter | Sequence[Parameter]): QCoDeS parameter or
+                parameters that share the same setpoints.
+            points (Sequence[int | float]): Arbitrary List of points to sweep through.
+            delay (float): Dwell time in seconds after each setpoint. Defaults
+                to 0.
+            start_delay (float): Delay in seconds after moving to the first
+                setpoint. Defaults to 0.
+
+        Raises:
+            ValueError: If points is not a sequence of numbers.
+            
+        """
+
+        # check if points is a sequence of numbers
+        if not isinstance(points, Sequence):
+            logger.error("Points must be a sequence of numbers")
+            raise ValueError("Points must be a sequence of numbers")
+
+        if not isinstance(parameter, Sequence):
+            self.parameter = [parameter]
+        else:
+            self.parameter = parameter
+
+        self.values = np.array(points)
+        
+        self.start = points[0]
+        self.stop = points[-1]
+        self.num = len(points)
+        self.delay = delay
+        self.start_delay = start_delay
 
 class SegmentedSweep:
     def __init__(
@@ -575,6 +617,7 @@ def _stepper(
     nc_snapshot_path: Optional[str] = None,
     verbose: bool = False,
     buffered_sweep: Optional[Any] = None,
+    sweep_index_cache: Optional[list] = None,
 ):
     """
     Recursive _stepper function for generating the for loops required to sweep measurements
@@ -595,14 +638,34 @@ def _stepper(
         nc_snapshot_path: Optional netcdf path for best-effort in-run snapshots
         verbose: Enables verbose logging of persistence actions when True
         buffered_sweep: Optional buffered sweep tree describing fast, instrument-internal sweeps
+        sweep_index_cache: Optional list of indices for the current sweep point in each sweep, used for progress tracking
     """
     global last_save
     depth = int(depth)
+
+    if sweep_index_cache is None:
+        sweep_index_cache = [None] * len(independents)
+
+    has_duplicate_sweep_values = any(
+        len(sw.values) != len(set(sw.values))
+        for sw in sweeps
+    )
 
     if buffered_sweep is None and len(sweeps) == 1 and not hasattr(sweeps[0], "values"):
         buffered_sweep = sweeps[0]
         sweeps = []
         depth = 1
+
+    def _assign(arr, value, slow_indexers, slow_position_indexers):
+        if has_duplicate_sweep_values:
+            position = {
+                dim: slow_position_indexers[dim]
+                for dim in arr.dims
+                if dim in slow_position_indexers
+            }
+            arr[position] = value
+        else:
+            arr.loc[slow_indexers] = value
 
     def _persist_memory(position=None):
         """
@@ -740,7 +803,7 @@ def _stepper(
                 exc,
             )
 
-    def _run_buffered_block(slow_indexers):
+    def _run_buffered_block(slow_indexers, slow_position_indexers=None):
         """
         Run, fetch, and store one complete hardware-buffered block.
 
@@ -757,6 +820,9 @@ def _stepper(
         progress = _BufferedProgress(bar, points, estimated_duration)
         progress.start()
 
+        if slow_position_indexers is None:
+            slow_position_indexers = {}
+
         try:
             # Instrument access stays on the caller thread. Only the estimated
             # tqdm updates happen on _BufferedProgress's background thread.
@@ -771,7 +837,12 @@ def _stepper(
             # Selecting only slow dimensions assigns the complete fast block.
             for dep, entry in buffered_results_tree.items():
                 arr = dataset.data_vars[f"{dep.name}"]
-                arr.loc[slow_indexers] = entry["result"]
+                _assign(
+                    arr,
+                    entry["result"],
+                    slow_indexers,
+                    slow_position_indexers,
+                )
         except BaseException:
             progress.stop()
             raise
@@ -782,6 +853,7 @@ def _stepper(
     try:
         if len(sweeps) == 0:
             slow_indexers = {}
+            slow_position_indexers = {}
 
             # `dependents` never contains buffered dependents -- those are
             # described by the buffered tree and written by _run_buffered_block
@@ -790,10 +862,15 @@ def _stepper(
             # empty immediately above it, so it could never fire.
             for dependent in dependents:
                 arr = dataset.data_vars[f"{dependent.name}"]
-                arr.loc[slow_indexers] = dependent()
+                _assign(
+                    arr,
+                    dependent(),
+                    slow_indexers,
+                    slow_position_indexers,
+                )
 
             if buffered_sweep is not None:
-                _run_buffered_block(slow_indexers)
+                _run_buffered_block(slow_indexers, slow_position_indexers)
             else:
                 bar.update(1)
 
@@ -821,7 +898,9 @@ def _stepper(
                     else:
                         param(sweep_point)
                     if param in independents:
-                        sweep_cache[independents.index(param)] = sweep_point
+                        cache_idx = independents.index(param)
+                        sweep_cache[cache_idx] = sweep_point
+                        sweep_index_cache[cache_idx] = idx
                 sleep(sweep.delay)
 
             if depth > 1:
@@ -842,6 +921,7 @@ def _stepper(
                     nc_snapshot_path=nc_snapshot_path,
                     verbose=verbose,
                     buffered_sweep=buffered_sweep,
+                    sweep_index_cache=sweep_index_cache,
                 )
 
             elif depth == 1:
@@ -852,6 +932,8 @@ def _stepper(
                 # We deliberately ignore any buffered dims here; they are
                 # spanned by the buffered sweep itself.
                 slow_indexers = {}
+                slow_position_indexers = {}
+
                 for sw in sweeps:
                     for p in sw.parameter:
                         try:
@@ -862,6 +944,7 @@ def _stepper(
                             )
                             continue
                         slow_indexers[p.name] = sweep_cache[idx]
+                        slow_position_indexers[p.name] = sweep_index_cache[cache_idx]
 
                 # `dependents` never contains buffered dependents -- those are
                 # described by the buffered tree and written by _run_buffered_block
@@ -870,7 +953,12 @@ def _stepper(
                 # empty immediately above it, so it could never fire.
                 for dependent in dependents:
                     arr = dataset.data_vars[f"{dependent.name}"]
-                    arr.loc[slow_indexers] = dependent()
+                    _assign(
+                        arr,
+                        dependent(),
+                        slow_indexers,
+                        slow_position_indexers,
+                    )
 
                 if buffered_sweep is not None:
                     # Re-arm instruments for this buffered tree at every
