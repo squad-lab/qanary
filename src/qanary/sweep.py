@@ -389,6 +389,7 @@ class CircularSweep:
         self.delay = delay
         self.start_delay = start_delay
 
+
 class PointSweep:
     def __init__(
         self,
@@ -411,7 +412,7 @@ class PointSweep:
 
         Raises:
             ValueError: If points is not a sequence of numbers.
-            
+
         """
 
         # check if points is a sequence of numbers
@@ -425,12 +426,13 @@ class PointSweep:
             self.parameter = parameter
 
         self.values = np.array(points)
-        
+
         self.start = points[0]
         self.stop = points[-1]
         self.num = len(points)
         self.delay = delay
         self.start_delay = start_delay
+
 
 class SegmentedSweep:
     def __init__(
@@ -647,8 +649,7 @@ def _stepper(
         sweep_index_cache = [None] * len(independents)
 
     has_duplicate_sweep_values = any(
-        len(sw.values) != len(set(sw.values))
-        for sw in sweeps
+        len(sw.values) != len(set(sw.values)) for sw in sweeps
     )
 
     if buffered_sweep is None and len(sweeps) == 1 and not hasattr(sweeps[0], "values"):

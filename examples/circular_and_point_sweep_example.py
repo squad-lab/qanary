@@ -1,15 +1,11 @@
-
-import matplotlib.pyplot as plt
-import numpy as np
-
 from qcodes.instrument import Instrument
 
-from qanary.sweep import PointSweep, CircularSweep, Sweep
 from qanary import measure
 from qanary.measure import Station
-
+from qanary.sweep import CircularSweep, PointSweep, Sweep
 
 counter = {"value": 0}
+
 
 def get_signal():
     counter["value"] += 1
@@ -99,33 +95,24 @@ dummy_ch2 = st.add_parameter("ch2", "Dummy channel 2", dummy.ch2)
 dummy2_signal = st.add_parameter("signal", "Dummy signal", dummy2.signal)
 
 
-point_sweep = PointSweep(dummy_ch1, points=[1,2,1,2], delay=0.1, start_delay=0.1) 
+point_sweep = PointSweep(dummy_ch1, points=[1, 2, 1, 2], delay=0.1, start_delay=0.1)
 print(vars(point_sweep))
 
 run_dict["experiment_name"] = "PointSweep_test"
 
 counter = {"value": 0}
-measure.run(
-    [point_sweep],
-    dependents = [dummy2_signal],
-    no_hashing=True,
-    **run_dict
+measure.run([point_sweep], dependents=[dummy2_signal], no_hashing=True, **run_dict)
+
+
+circ_sweep = CircularSweep(
+    dummy_ch2, start=1, stop=4, num=4, delay=0.1, start_delay=0.1
 )
-
-
-circ_sweep = CircularSweep(dummy_ch2, start=1, stop=4, num=4, delay=0.1, start_delay=0.1)
 print(vars(circ_sweep))
 
 run_dict["experiment_name"] = "CircularSweep_test"
 
 counter = {"value": 0}
-measure.run(
-    [circ_sweep],
-    dependents = [dummy2_signal],
-    no_hashing=True,
-    **run_dict
-)
-
+measure.run([circ_sweep], dependents=[dummy2_signal], no_hashing=True, **run_dict)
 
 
 sweep = Sweep(dummy_ch2, start=1, stop=7, num=7, delay=0.1, start_delay=0.1)
@@ -134,13 +121,7 @@ print(vars(sweep))
 run_dict["experiment_name"] = "Sweep_test"
 
 counter = {"value": 0}
-measure.run(
-    [sweep],
-    dependents = [dummy2_signal],
-    no_hashing=True,
-    **run_dict
-)
+measure.run([sweep], dependents=[dummy2_signal], no_hashing=True, **run_dict)
 
 
 Instrument.close_all()
-
