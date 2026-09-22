@@ -11,15 +11,14 @@ import xarray as xr
 import zarr
 from qcodes.parameters import Parameter
 
-from qanary.live_tuning.live_tuning_widgets import (
-    LiveTuningWidgets,
-)
-
 from qanary.buffered.sweep import (
     _abort_instruments,
     _arm_instruments,
     _fetch_dependents_tree,
     _fetch_results,
+)
+from qanary.live_tuning.live_tuning_widgets import (
+    LiveTuningWidgets,
 )
 from qanary.logger import get_logger
 from qanary.measure import (
@@ -154,9 +153,7 @@ class LiveTuning:
         self,
         *,
         controls: Sequence[Parameter] = (),
-        control_ranges: Sequence[
-            tuple[float, float]
-        ] = (),
+        control_ranges: Sequence[tuple[float, float]] = (),
         refresh_interval: float = 0.5,
         widget_step: float = 0.01,
         continuous_update: bool = True,
@@ -165,9 +162,7 @@ class LiveTuning:
     ) -> None:
 
         if refresh_interval <= 0:
-            raise ValueError(
-                "refresh_interval must be > 0."
-            )
+            raise ValueError("refresh_interval must be > 0.")
 
         self.refresh_interval = float(
             refresh_interval
@@ -180,13 +175,11 @@ class LiveTuning:
         # Controls
         # --------------------------------------------------
 
-        self.controls = ControlMailbox(
-            controls
-        )
+        self.controls = ControlMailbox(controls)
 
-        #---------------------------------------------------
+        # ---------------------------------------------------
         # State callbacks
-        #---------------------------------------------------
+        # ---------------------------------------------------
 
         self._state_callbacks = []
 
@@ -234,9 +227,7 @@ class LiveTuning:
         """
 
         if not self._running:
-            raise RuntimeError(
-                "No live tuning measurement is currently running."
-            )
+            raise RuntimeError("No live tuning measurement is currently running.")
 
         self.controls.request(
             parameter,
@@ -638,7 +629,6 @@ class LiveTuning:
         )
 
         return self
-    
 
     def add_state_callback(self, callback) -> None:
         """
@@ -648,15 +638,12 @@ class LiveTuning:
         """
         self._state_callbacks.append(callback)
 
-
     def _notify_state(self) -> None:
         for callback in self._state_callbacks:
             try:
                 callback(self._running)
             except Exception:
-                logger.exception(
-                    "Live tuning state callback failed."
-                )
+                logger.exception("Live tuning state callback failed.")
 
     def stop(self) -> xr.Dataset:
         """
