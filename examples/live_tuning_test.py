@@ -2,14 +2,11 @@
 
 from qcdrivers.buffered.squad import NodeDummyAcquisition, NodeDummySweeper
 from qcdrivers.squad.helpers import ShellInstrument
-<<<<<<< HEAD
 
 from qanary.live_tuning.live_tuning import LiveTuning
 from qanary.measure import Station
 from qanary.sweep import Sweep
 
-=======
->>>>>>> 0ddee4ea0826fea6738a00639a4445b621ff9692
 from qcodes.instrument import Instrument
 
 from qanary.live_tuning.live_tuning import LiveTuning
@@ -153,15 +150,11 @@ buffered_sweep = {
 
 # %%
 
-<<<<<<< HEAD
 tuning.start(
     [buffered_sweep],
     **run_dict,
     no_hashing=True
 )
-=======
-tuning.start([buffered_sweep], dependents=[], **run_dict, no_hashing=True)
->>>>>>> 0ddee4ea0826fea6738a00639a4445b621ff9692
 
 # %%
 
