@@ -27,7 +27,6 @@ from qanary.measure import (
 )
 from qanary.sweep import Sweep, reset_disk_persist_cache
 
-
 logger = get_logger(__name__)
 
 
@@ -38,7 +37,7 @@ logger = get_logger(__name__)
 _SUPPORTED_DAC_NODES = {
     ("qcdrivers.buffered.basel.nodes", "NodeBaselDAC"),
     ("qcdrivers.buffered.qdevil.nodes", "NodeQDAC2"),
-    ("qcdrivers.buffered.squad.nodes", "NodeDelay") # used for testing in 1d
+    ("qcdrivers.buffered.squad.nodes", "NodeDummySweeper"),  # used for testing
 }
 
 
@@ -155,11 +154,9 @@ class LiveTuning:
         refresh_interval: float = 0.5,
         verbose: bool = False,
     ) -> None:
-        
+
         if refresh_interval <= 0:
-            raise ValueError(
-                "refresh_interval must be > 0."
-            )
+            raise ValueError("refresh_interval must be > 0.")
 
         self.station = station
         self.refresh_interval = float(refresh_interval)
@@ -202,7 +199,7 @@ class LiveTuning:
                 return None
 
             return self._latest_dataset.copy(deep=True)
-    
+
     def _reset_run_state(self) -> None:
         """
         Reset all state belonging to one live-tuning run.
@@ -229,7 +226,7 @@ class LiveTuning:
 
         self._snapshot_before = None
         self._snapshot_after = None
-    
+
     def _format_snapshot_value(self, value: Any, max_length: int = 50) -> str:
         """Format a value for the console table."""
         if isinstance(value, np.ndarray):
@@ -241,7 +238,7 @@ class LiveTuning:
             value_str = value_str[:max_length] + "..."
 
         return value_str
-    
+
     def _parameter_changes(
         self,
         before: dict[str, Any],
@@ -254,7 +251,6 @@ class LiveTuning:
         after_parameters = after["parameters"]
 
         for name in before_parameters.keys() | after_parameters.keys():
-
             before_entry = before_parameters.get(name)
             after_entry = after_parameters.get(name)
 
@@ -287,12 +283,10 @@ class LiveTuning:
             result.append(
                 {
                     "Independent(s)": ", ".join(
-                        parameter.label
-                        for parameter in sweep.parameter
+                        parameter.label for parameter in sweep.parameter
                     ),
                     "Parameter Name(s)": [
-                        parameter.name
-                        for parameter in sweep.parameter
+                        parameter.name for parameter in sweep.parameter
                     ],
                     "Range": [
                         _sanitize_for_json(sweep.values[0]),
@@ -310,7 +304,6 @@ class LiveTuning:
             )
 
         return result
-
 
     def _take_snapshot(self, phase: str) -> dict[str, Any]:
         """
@@ -346,9 +339,7 @@ class LiveTuning:
                     "snapshot_error": str(exc),
                 }
 
-            instruments_snapshot[instrument.name] = (
-                _sanitize_for_json(snapshot)
-            )
+            instruments_snapshot[instrument.name] = _sanitize_for_json(snapshot)
 
         # --------------------------------------------------------------
         # Registered Qanary parameters
@@ -358,7 +349,6 @@ class LiveTuning:
         parameter_table = []
 
         for parameter in station.parameters:
-
             try:
                 value = parameter()
 
@@ -437,10 +427,7 @@ class LiveTuning:
             start, stop = sweep["Range"]
 
             try:
-                range_string = (
-                    f"{float(start):.3e} to "
-                    f"{float(stop):.3e}"
-                )
+                range_string = f"{float(start):.3e} to {float(stop):.3e}"
             except (TypeError, ValueError):
                 range_string = f"{start} to {stop}"
 
@@ -479,8 +466,6 @@ class LiveTuning:
             "sweeps": sweeps_snapshot,
         }
 
-
-
     def start(
         self,
         sweeps,
@@ -506,7 +491,7 @@ class LiveTuning:
         """
         if self._running:
             raise RuntimeError("Live tuning session is already running.")
-        
+
         self._reset_run_state()
 
         if metadata is None:
@@ -525,16 +510,13 @@ class LiveTuning:
 
         if len(sweeps) != 1:
             raise ValueError(
-                "Live tuning currently accepts exactly one "
-                "buffered DAC sweep tree."
+                "Live tuning currently accepts exactly one buffered DAC sweep tree."
             )
 
         buffered_sweep = sweeps[0]
 
         if not isinstance(buffered_sweep, dict):
-            raise TypeError(
-                "Live tuning requires a buffered sweep tree."
-            )
+            raise TypeError("Live tuning requires a buffered sweep tree.")
 
         self.buffered_sweep = buffered_sweep
         self.dependents = dependents
@@ -617,41 +599,29 @@ class LiveTuning:
 
         if final_dataset is None:
             raise RuntimeError("No dataset exists to finalize.")
-        
+
         # snapshot after the live measurement
-        self._snapshot_after = self._take_snapshot(
-            phase="after"
-        )
+        self._snapshot_after = self._take_snapshot(phase="after")
 
         final_dataset.attrs["Measurement Mode"] = "live_tuning"
         final_dataset.attrs["Live Tuning State"] = "finished"
-        final_dataset.attrs["Live Tuning Frames"] = (
-            self._frame_number
-        )
+        final_dataset.attrs["Live Tuning Frames"] = self._frame_number
 
-        final_dataset.attrs["Live Tuning End"] = (
-            self._snapshot_after["timestamp"]
-        )
+        final_dataset.attrs["Live Tuning End"] = self._snapshot_after["timestamp"]
 
         final_dataset.attrs["Snapshot After"] = json.dumps(
-            _sanitize_for_json(
-                self._snapshot_after
-            )
+            _sanitize_for_json(self._snapshot_after)
         )
 
         final_dataset.attrs["Parameters Snapshot After"] = json.dumps(
-            _sanitize_for_json(
-                self._snapshot_after["parameters"]
-            )
+            _sanitize_for_json(self._snapshot_after["parameters"])
         )
 
         final_dataset.attrs["Instruments Snapshot After"] = json.dumps(
-            _sanitize_for_json(
-                self._snapshot_after["instruments"]
-            )
+            _sanitize_for_json(self._snapshot_after["instruments"])
         )
 
-        #track changes
+        # track changes
         changes = self._parameter_changes(
             self._snapshot_before,
             self._snapshot_after,
@@ -707,11 +677,10 @@ class LiveTuning:
 
         if self._worker_error is not None:
             raise RuntimeError(
-                "Live tuning acquisition failed. "
-                "The last complete frame was finalized."
+                "Live tuning acquisition failed. The last complete frame was finalized."
             ) from self._worker_error
 
-        #return exported
+        # return exported
         return None
 
     close = stop
@@ -729,9 +698,7 @@ class LiveTuning:
         root = self.buffered_sweep
 
         if "instrument" not in root:
-            raise ValueError(
-                "Buffered live tuning sweep requires a root 'instrument'."
-            )
+            raise ValueError("Buffered live tuning sweep requires a root 'instrument'.")
 
         root_instrument = root["instrument"]
 
@@ -752,9 +719,7 @@ class LiveTuning:
         sweeps = root.get("sweeps")
 
         if not isinstance(sweeps, (list, tuple)):
-            raise TypeError(
-                "Buffered DAC root must contain a 'sweeps' list."
-            )
+            raise TypeError("Buffered DAC root must contain a 'sweeps' list.")
 
         if len(sweeps) not in (1, 2):
             raise ValueError(
@@ -806,9 +771,7 @@ class LiveTuning:
 
             for child in children:
                 if not isinstance(child, dict):
-                    raise TypeError(
-                        "Each buffered-tree child must be a dict."
-                    )
+                    raise TypeError("Each buffered-tree child must be a dict.")
 
                 if child.get("sweeps"):
                     raise ValueError(
@@ -854,39 +817,27 @@ class LiveTuning:
         )
 
         # snapshot handling
-        self._snapshot_before = self._take_snapshot(
-            phase="before"
-        )
+        self._snapshot_before = self._take_snapshot(phase="before")
 
         template.attrs["Measurement Mode"] = "live_tuning"
         template.attrs["Live Tuning State"] = "running"
         template.attrs["Live Tuning Frames"] = 0
-        template.attrs["Live Tuning Start"] = (
-            self._snapshot_before["timestamp"]
-        )
+        template.attrs["Live Tuning Start"] = self._snapshot_before["timestamp"]
 
         template.attrs["Snapshot Before"] = json.dumps(
-            _sanitize_for_json(
-                self._snapshot_before
-            )
+            _sanitize_for_json(self._snapshot_before)
         )
 
         template.attrs["Parameters Snapshot Before"] = json.dumps(
-            _sanitize_for_json(
-                self._snapshot_before["parameters"]
-            )
+            _sanitize_for_json(self._snapshot_before["parameters"])
         )
 
         template.attrs["Instruments Snapshot Before"] = json.dumps(
-            _sanitize_for_json(
-                self._snapshot_before["instruments"]
-            )
+            _sanitize_for_json(self._snapshot_before["instruments"])
         )
 
         template.attrs["Sweeps"] = json.dumps(
-            _sanitize_for_json(
-                self._snapshot_before["sweeps"]
-            )
+            _sanitize_for_json(self._snapshot_before["sweeps"])
         )
         ###
 
@@ -912,9 +863,7 @@ class LiveTuning:
         # Reuse exactly the same MemoryStore / temporary disk store mechanism
         # as normal Qanary measurements.
         self.measurement.memory_store = zarr.MemoryStore()
-        self.measurement.disk_store = zarr.DirectoryStore(
-            self.measurement.live_data
-        )
+        self.measurement.disk_store = zarr.DirectoryStore(self.measurement.live_data)
 
         template.to_zarr(
             store=self.measurement.memory_store,
@@ -942,8 +891,7 @@ class LiveTuning:
         station = self.measurement.station
 
         instrument_snapshots = {
-            instrument.name: instrument.snapshot()
-            for instrument in station.instruments
+            instrument.name: instrument.snapshot() for instrument in station.instruments
         }
 
         parameter_snapshots = {}
@@ -982,12 +930,8 @@ class LiveTuning:
             "Instruments Snapshot": json.dumps(
                 _sanitize_for_json(instrument_snapshots)
             ),
-            "Parameters Snapshot": json.dumps(
-                _sanitize_for_json(parameter_snapshots)
-            ),
-            "Sweeps": json.dumps(
-                _sanitize_for_json(sweep_metadata)
-            ),
+            "Parameters Snapshot": json.dumps(_sanitize_for_json(parameter_snapshots)),
+            "Sweeps": json.dumps(_sanitize_for_json(sweep_metadata)),
             "Extra Metadata": json.dumps(
                 _sanitize_for_json(self.measurement.extra_metadata)
             ),
@@ -1023,8 +967,7 @@ class LiveTuning:
                 _abort_instruments(self.buffered_sweep)
             except Exception:
                 logger.exception(
-                    "Failed aborting buffered instruments after "
-                    "live tuning error."
+                    "Failed aborting buffered instruments after live tuning error."
                 )
 
     def _acquire_frame(
@@ -1063,9 +1006,7 @@ class LiveTuning:
             variable_name = dependent.name
 
             if variable_name not in frame.data_vars:
-                raise RuntimeError(
-                    f"Fetched unknown dependent {variable_name!r}."
-                )
+                raise RuntimeError(f"Fetched unknown dependent {variable_name!r}.")
 
             result = np.asarray(entry["result"])
 
@@ -1085,9 +1026,7 @@ class LiveTuning:
         frame.attrs["Live Tuning State"] = "running"
         frame.attrs["Live Tuning Frame"] = next_frame
         frame.attrs["Live Tuning Frames"] = next_frame
-        frame.attrs["Live Tuning Frame Timestamp"] = (
-            datetime.now().isoformat()
-        )
+        frame.attrs["Live Tuning Frame Timestamp"] = datetime.now().isoformat()
         frame.attrs["Live Tuning Controls"] = json.dumps(
             _sanitize_for_json(control_values)
         )
@@ -1125,15 +1064,11 @@ class LiveTuning:
         # Initial empty/preallocated dataset.
         self._publish_latest(force=True)
 
-        while not self._publisher_stop_event.wait(
-            self.refresh_interval
-        ):
+        while not self._publisher_stop_event.wait(self.refresh_interval):
             try:
                 self._publish_latest()
             except Exception:
-                logger.exception(
-                    "Failed publishing live tuning dataset."
-                )
+                logger.exception("Failed publishing live tuning dataset.")
 
     def _publish_latest(self, *, force: bool = False) -> None:
         with self._publish_lock:
