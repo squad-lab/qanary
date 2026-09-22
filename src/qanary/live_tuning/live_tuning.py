@@ -11,6 +11,10 @@ import xarray as xr
 import zarr
 from qcodes.parameters import Parameter
 
+from qanary.live_tuning.live_tuning_widgets import (
+    LiveTuningWidgets,
+)
+
 from qanary.buffered.sweep import (
     _abort_instruments,
     _arm_instruments,
@@ -148,30 +152,98 @@ class LiveTuning:
 
     def __init__(
         self,
-        station: Station,
+        station,
         *,
         controls: Sequence[Parameter] = (),
+        control_ranges: Sequence[
+            tuple[float, float]
+        ] = (),
         refresh_interval: float = 0.5,
+        widget_step: float = 0.01,
+        continuous_update: bool = True,
+        show_widgets: bool = True,
         verbose: bool = False,
     ) -> None:
 
         if refresh_interval <= 0:
-            raise ValueError("refresh_interval must be > 0.")
+            raise ValueError(
+                "refresh_interval must be > 0."
+            )
 
         self.station = station
-        self.refresh_interval = float(refresh_interval)
+        self.refresh_interval = float(
+            refresh_interval
+        )
         self.verbose = verbose
 
-        self.controls = ControlMailbox(controls)
-
-        self.measurement: Measurement | None = None
-        self.buffered_sweep = None
-        self.dependents = []
-
         self._running = False
-        self._run_count = 0
+
+        # --------------------------------------------------
+        # Controls
+        # --------------------------------------------------
+
+        self.controls = ControlMailbox(
+            controls
+        )
+
+        #---------------------------------------------------
+        # State callbacks
+        #---------------------------------------------------
+
+        self._state_callbacks = []
+
+        # --------------------------------------------------
+        # Run-specific state
+        # --------------------------------------------------
 
         self._reset_run_state()
+
+        # --------------------------------------------------
+        # Widgets
+        # --------------------------------------------------
+
+        self.widgets = LiveTuningWidgets(
+            tuning=self,
+            controls=controls,
+            ranges=control_ranges,
+            step=widget_step,
+            continuous_update=continuous_update,
+            auto_display=show_widgets,
+        )
+
+    def set(
+        self,
+        parameter: Parameter,
+        value: Any,
+    ) -> None:
+        """
+        Request a new value for a live tuning control parameter.
+
+        The parameter is not changed immediately in the notebook thread.
+        Instead, the requested value is stored in the ControlMailbox and
+        applied by the acquisition thread between buffered frames.
+
+        Args:
+            parameter: Registered live tuning control parameter.
+            value: New target value.
+
+        Raises:
+            RuntimeError:
+                If no live tuning measurement is currently running.
+
+            ValueError:
+                If the parameter was not registered as a control.
+        """
+
+        if not self._running:
+            raise RuntimeError(
+                "No live tuning measurement is currently running."
+            )
+
+        self.controls.request(
+            parameter,
+            value,
+        )
 
     # ------------------------------------------------------------------
     # public API
@@ -469,7 +541,6 @@ class LiveTuning:
     def start(
         self,
         sweeps,
-        dependents,
         *,
         wafer_id: str,
         device_type: str,
@@ -500,8 +571,6 @@ class LiveTuning:
         if verbose is None:
             verbose = self.verbose
 
-        self._reset_run_state()
-
         self.no_hashing = no_hashing
         self.verbose = verbose
 
@@ -519,7 +588,6 @@ class LiveTuning:
             raise TypeError("Live tuning requires a buffered sweep tree.")
 
         self.buffered_sweep = buffered_sweep
-        self.dependents = dependents
 
         self._validate_buffered_sweep()
 
@@ -541,6 +609,7 @@ class LiveTuning:
 
         self._running = True
 
+        ### start two threads ###
         self._publisher_thread = Thread(
             target=self._publisher_loop,
             name=f"qanary-live-publisher-{self.measurement.id}",
@@ -552,6 +621,9 @@ class LiveTuning:
             name=f"qanary-live-acquisition-{self.measurement.id}",
             daemon=True,
         )
+        #########################
+
+        self._notify_state()
 
         # Publisher first so Qimchi can already see the empty/preallocated
         # dataset while the first hardware frame is running.
@@ -564,6 +636,25 @@ class LiveTuning:
         )
 
         return self
+    
+
+    def add_state_callback(self, callback) -> None:
+        """
+        Register a callback that is called whenever the running state changes.
+
+        callback(running: bool)
+        """
+        self._state_callbacks.append(callback)
+
+
+    def _notify_state(self) -> None:
+        for callback in self._state_callbacks:
+            try:
+                callback(self._running)
+            except Exception:
+                logger.exception(
+                    "Live tuning state callback failed."
+                )
 
     def stop(self) -> xr.Dataset:
         """
@@ -585,6 +676,7 @@ class LiveTuning:
             self._acquisition_thread.join()
 
         self._running = False
+        self._notify_state()
 
         # No new datasets can appear after acquisition has stopped.
         # Publish the newest frame once more.
