@@ -1,13 +1,12 @@
 # %%
 
 from math import isclose, prod
-import numpy as np
 from time import sleep
 from typing import Sequence
 
-from qcdrivers.buffered.base import BufferedNodeBase
+import numpy as np
 from qcdrivers.buffered._typing import SweepLike
-
+from qcdrivers.buffered.base import BufferedNodeBase
 from qcdrivers.squad.helpers import ShellInstrument
 from qcodes.instrument import Instrument
 
@@ -15,9 +14,8 @@ from qanary.live_tuning.live_tuning import LiveTuning
 from qanary.measure import Station
 from qanary.sweep import Sweep
 
-from qcodes.instrument import Instrument
+# %%
 
-#%%
 
 class NodeDummySweeper(BufferedNodeBase):
     """
@@ -103,30 +101,20 @@ class NodeDummySweeper(BufferedNodeBase):
         ndim = len(self.sweeps)
 
         if ndim == 0:
-            raise ValueError(
-                "NodeDelay requires at least one sweep."
-            )
+            raise ValueError("NodeDelay requires at least one sweep.")
 
         if ndim > 2:
-            raise ValueError(
-                "NodeDelay supports at most 2D buffered sweeps."
-            )
+            raise ValueError("NodeDelay supports at most 2D buffered sweeps.")
 
         # Preserve the sweep order:
         #
         #   sweeps[0] -> outer dimension
         #   sweeps[1] -> inner dimension
-        self.shape = tuple(
-            int(sw.num)
-            for sw in self.sweeps
-        )
+        self.shape = tuple(int(sw.num) for sw in self.sweeps)
 
         self.total_num = prod(self.shape)
 
-        delays = tuple(
-            float(sw.delay)
-            for sw in self.sweeps
-        )
+        delays = tuple(float(sw.delay) for sw in self.sweeps)
 
         if ndim == 2 and not isclose(
             delays[0],
@@ -166,17 +154,12 @@ class NodeDummySweeper(BufferedNodeBase):
             return
 
         if self.total_num <= 0:
-            raise RuntimeError(
-                "No sweep has been registered on NodeDelay."
-            )
+            raise RuntimeError("No sweep has been registered on NodeDelay.")
 
-        sleep(
-            (self.total_num + 1)
-            * self.delay
-        )
+        sleep((self.total_num + 1) * self.delay)
+
 
 class NodeDummyAcquisition(BufferedNodeBase):
-
     def __init__(
         self,
         inst,
@@ -222,14 +205,9 @@ class NodeDummyAcquisition(BufferedNodeBase):
             num,
             (str, bytes),
         ):
-            self.shape = tuple(
-                int(n)
-                for n in num
-            )
+            self.shape = tuple(int(n) for n in num)
         else:
-            self.shape = (
-                int(num),
-            )
+            self.shape = (int(num),)
 
         if len(self.shape) not in (1, 2):
             raise ValueError(
@@ -237,9 +215,7 @@ class NodeDummyAcquisition(BufferedNodeBase):
                 f"1D or 2D sweeps, got shape={self.shape}."
             )
 
-        self.total_num = int(
-            np.prod(self.shape)
-        )
+        self.total_num = int(np.prod(self.shape))
 
         self.delay = float(delay)
 
@@ -249,9 +225,7 @@ class NodeDummyAcquisition(BufferedNodeBase):
         gate_y = float(self.core.gate_y())
 
         if len(self.shape) != 2:
-            raise RuntimeError(
-                "This dummy acquisition currently expects a 2D sweep."
-            )
+            raise RuntimeError("This dummy acquisition currently expects a 2D sweep.")
 
         ny, nx = self.shape
 
@@ -282,21 +256,10 @@ class NodeDummyAcquisition(BufferedNodeBase):
 
         sigma = 0.15
 
-        gaussian = np.exp(
-            -(
-                (X - x0) ** 2
-                + (Y - y0) ** 2
-            )
-            / (2 * sigma**2)
-        )
+        gaussian = np.exp(-((X - x0) ** 2 + (Y - y0) ** 2) / (2 * sigma**2))
 
         if self.noise > 0:
-            gaussian += (
-                self.noise
-                * self.rng.standard_normal(
-                    gaussian.shape
-                )
-            )
+            gaussian += self.noise * self.rng.standard_normal(gaussian.shape)
 
         r_data = gaussian
         p_data = 30.0 * gaussian
@@ -304,7 +267,6 @@ class NodeDummyAcquisition(BufferedNodeBase):
         result = []
 
         for dependent in self.dependents:
-
             if dependent.name == "lockin_r":
                 data = r_data
 
@@ -312,20 +274,13 @@ class NodeDummyAcquisition(BufferedNodeBase):
                 data = p_data
 
             else:
-                raise ValueError(
-                    f"Unknown dummy dependent "
-                    f"{dependent.name!r}."
-                )
+                raise ValueError(f"Unknown dummy dependent {dependent.name!r}.")
 
-            result.append(
-                np.asarray(data).ravel()
-            )
+            result.append(np.asarray(data).ravel())
 
         self.frame += 1
 
         return result
-
-
 
 
 # %%
