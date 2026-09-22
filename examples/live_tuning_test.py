@@ -429,7 +429,6 @@ dummy_gate_y = st.add_parameter(
 )
 
 
-
 # %%
 
 v1_sweep = Sweep(v1, -1, 1, num=51, delay=0.001, start_delay=0.001)
@@ -468,11 +467,7 @@ tuning = LiveTuning(
 
 # %%
 
-tuning.start(
-    [buffered_sweep],
-    **run_dict,
-    no_hashing=True
-)
+tuning.start([buffered_sweep], **run_dict, no_hashing=True)
 
 # %%
 
