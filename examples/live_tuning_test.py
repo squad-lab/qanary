@@ -1,18 +1,18 @@
-#%%
+# %%
 
-#from qcdrivers.buffered.qdevil import NodeQdac2
-#from qcdrivers.buffered.zurich import NodeMFLI
+# from qcdrivers.buffered.qdevil import NodeQdac2
+# from qcdrivers.buffered.zurich import NodeMFLI
 
-from qcdrivers.squad.helpers import Delay
 from qcdrivers.buffered.squad import NodeDelay, NodeDummyAcquisition
-
-from qanary.live_tuning import LiveTuning
-from qanary.measure import Measurement, Station
-from qanary.sweep import Sweep
-
+from qcdrivers.squad.helpers import Delay
 from qcodes.instrument import Instrument
 
-#%%
+from qanary.live_tuning import LiveTuning
+from qanary.measure import Station
+from qanary.sweep import Sweep
+
+# %%
+
 
 class DummyAcquisition(Instrument):
     """
@@ -48,17 +48,17 @@ class DummyAcquisition(Instrument):
         }
 
 
-#%%
+# %%
 
 clock = Delay("clock")
 dummy_acquisition = DummyAcquisition("dummy_lockin")
 
-#%%
+# %%
 
 st = Station("Test")
 st.instruments = [clock, dummy_acquisition]
 
-#%%
+# %%
 
 run_dict = {
     "wafer_id": "wafer1",
@@ -69,14 +69,14 @@ run_dict = {
     "fridge_name": "Radler",
 }
 
-#%%
+# %%
 
 t = st.add_parameter("t", "Time", clock.time)
 
 lockin_r = st.add_parameter("lockin_r", "Lock-in R", dummy_acquisition.R)
 lockin_p = st.add_parameter("lockin_p", "Lock-in Phase", dummy_acquisition.P)
 
-#%%
+# %%
 
 
 time_sweep = Sweep(t, 0, 1, num=101, delay=0.01, start_delay=0.01)
@@ -92,7 +92,6 @@ buffered_sweep = {
                 inst=dummy_acquisition,
                 noise=0.02,
             ),
-
             "dependent": [
                 lockin_p,
                 lockin_r,
@@ -101,7 +100,7 @@ buffered_sweep = {
     ],
 }
 
-#%%
+# %%
 
 tuning = LiveTuning(
     station=st,
@@ -109,20 +108,15 @@ tuning = LiveTuning(
     refresh_interval=1,
 )
 
-#%%
+# %%
 
-tuning.start(
-    [buffered_sweep],
-    dependents=[],
-    **run_dict,
-    no_hashing=True
-)
+tuning.start([buffered_sweep], dependents=[], **run_dict, no_hashing=True)
 
-#%%
+# %%
 
 tuning.stop()
 
-#%%
+# %%
 
 Instrument.close_all()
 
