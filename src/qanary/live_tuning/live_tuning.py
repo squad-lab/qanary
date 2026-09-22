@@ -152,7 +152,6 @@ class LiveTuning:
 
     def __init__(
         self,
-        station,
         *,
         controls: Sequence[Parameter] = (),
         control_ranges: Sequence[
@@ -170,7 +169,6 @@ class LiveTuning:
                 "refresh_interval must be > 0."
             )
 
-        self.station = station
         self.refresh_interval = float(
             refresh_interval
         )
@@ -541,10 +539,12 @@ class LiveTuning:
     def start(
         self,
         sweeps,
+        dependents=(),
         *,
         wafer_id: str,
         device_type: str,
         sample_name: str,
+        station: Station,
         experiment_name: str,
         data_location: str,
         metadata: dict | None = None,
@@ -553,6 +553,7 @@ class LiveTuning:
         nc_snapshot_during_run: bool = False,
         git_repo: str = "~/.measurement-hashes",
         no_hashing: bool = False,
+        location_return: bool = False,
         verbose: bool | None = None,
     ) -> LiveTuning:
         """
@@ -573,6 +574,7 @@ class LiveTuning:
 
         self.no_hashing = no_hashing
         self.verbose = verbose
+        self.station = station
 
         if not isinstance(sweeps, (list, tuple)):
             sweeps = [sweeps]

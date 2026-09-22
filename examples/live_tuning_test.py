@@ -9,8 +9,6 @@ from qanary.sweep import Sweep
 
 from qcodes.instrument import Instrument
 
-from qanary.live_tuning.live_tuning import LiveTuning
-
 
 # %%
 
@@ -85,6 +83,7 @@ run_dict = {
     "wafer_id": "wafer1",
     "device_type": "QD",
     "sample_name": "device1",
+    "station": st,
     "experiment_name": "live_tuning",
     "data_location": r"C:\Users\s.schreibing\Documents\qimchi_data",
     "fridge_name": "Radler",
@@ -111,20 +110,7 @@ dummy_gate_y = st.add_parameter(
     dummy_acquisition.gate_y,
 )
 
-# %%
 
-tuning = LiveTuning(
-    station=st,
-    controls=[
-        dummy_gate_x,
-        dummy_gate_y,
-    ],
-    control_ranges=[
-        (-1.0, 1.0),
-        (-1.0, 1.0),
-    ],
-    refresh_interval=0.1,
-)
 
 # %%
 
@@ -147,6 +133,20 @@ buffered_sweep = {
         }
     ],
 }
+
+# %%
+
+tuning = LiveTuning(
+    controls=[
+        dummy_gate_x,
+        dummy_gate_y,
+    ],
+    control_ranges=[
+        (-1.0, 1.0),
+        (-1.0, 1.0),
+    ],
+    refresh_interval=0.1,
+)
 
 # %%
 
