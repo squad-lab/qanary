@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -7,7 +6,6 @@ from typing import TYPE_CHECKING
 import ipywidgets as widgets
 from IPython.display import display
 from qcodes.parameters import Parameter
-
 
 if TYPE_CHECKING:
     from qanary.live_tuning import LiveTuning
@@ -43,9 +41,7 @@ class LiveTuningWidgets:
             )
 
         if step <= 0:
-            raise ValueError(
-                "Widget step must be > 0."
-            )
+            raise ValueError("Widget step must be > 0.")
 
         self.tuning = tuning
         self.controls = list(controls)
@@ -59,14 +55,10 @@ class LiveTuningWidgets:
         self._container = self._create_widgets()
 
         # React to start()/stop().
-        self.tuning.add_state_callback(
-            self._update_running_state
-        )
+        self.tuning.add_state_callback(self._update_running_state)
 
         # Initially no measurement is running.
-        self._update_running_state(
-            self.tuning.running
-        )
+        self._update_running_state(self.tuning.running)
 
         if auto_display:
             self.display()
@@ -107,9 +99,7 @@ class LiveTuningWidgets:
             except Exception:
                 # If reading the parameter fails, use the
                 # center of the specified range.
-                initial_value = (
-                    minimum + maximum
-                ) / 2
+                initial_value = (minimum + maximum) / 2
 
             # Make sure widget starts inside its allowed range.
             initial_value = max(
@@ -137,18 +127,14 @@ class LiveTuningWidgets:
 
             # Do not use parameter directly in a lambda without binding it.
             slider.observe(
-                self._make_slider_callback(
-                    parameter
-                ),
+                self._make_slider_callback(parameter),
                 names="value",
             )
 
             self.sliders[parameter.name] = slider
             slider_widgets.append(slider)
 
-        return widgets.VBox(
-            slider_widgets
-        )
+        return widgets.VBox(slider_widgets)
 
     def _make_slider_callback(
         self,
@@ -192,9 +178,7 @@ class LiveTuningWidgets:
         """
 
         for parameter in self.controls:
-            slider = self.sliders[
-                parameter.name
-            ]
+            slider = self.sliders[parameter.name]
 
             try:
                 value = float(parameter())
@@ -213,4 +197,3 @@ class LiveTuningWidgets:
         Display the control widget in a Jupyter/IPython environment.
         """
         display(self._container)
-        
