@@ -164,9 +164,7 @@ class LiveTuning:
         if refresh_interval <= 0:
             raise ValueError("refresh_interval must be > 0.")
 
-        self.refresh_interval = float(
-            refresh_interval
-        )
+        self.refresh_interval = float(refresh_interval)
         self.verbose = verbose
 
         self._running = False

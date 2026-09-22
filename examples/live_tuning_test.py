@@ -8,9 +8,6 @@ from qanary.live_tuning.live_tuning import LiveTuning
 from qanary.measure import Station
 from qanary.sweep import Sweep
 
-from qcodes.instrument import Instrument
-
-
 # %%
 
 dummy_dac = ShellInstrument("dummy_dac", {})
@@ -112,7 +109,6 @@ dummy_gate_y = st.add_parameter(
 )
 
 
-
 # %%
 
 v1_sweep = Sweep(v1, -1, 1, num=51, delay=0.001, start_delay=0.001)
@@ -151,11 +147,7 @@ tuning = LiveTuning(
 
 # %%
 
-tuning.start(
-    [buffered_sweep],
-    **run_dict,
-    no_hashing=True
-)
+tuning.start([buffered_sweep], **run_dict, no_hashing=True)
 
 # %%
 
