@@ -5,6 +5,7 @@
 
 from qcdrivers.squad.helpers import Delay
 from qcdrivers.buffered.squad import NodeDelay, NodeDummyAcquisition
+from qcdrivers.squad.helpers import ShellInstrument
 
 from qanary.live_tuning import LiveTuning
 from qanary.measure import Measurement, Station
@@ -14,49 +15,45 @@ from qcodes.instrument import Instrument
 
 #%%
 
-class DummyAcquisition(Instrument):
-    """
-    Minimal QCoDeS dummy Acquisition Instrument (like a lock-in or dmm).
-
-    R and P are ordinary QCoDeS parameters so Qanary can use them
-    as dependents and attach metadata to the xarray Dataset.
-    """
-
-    def __init__(self, name: str):
-        super().__init__(name)
-
-        self.add_parameter(
-            "R",
-            label="Dummy R",
-            unit="V",
-            get_cmd=lambda: 0.0,
-        )
-
-        self.add_parameter(
-            "P",
-            label="Dummy Phase",
-            unit="deg",
-            get_cmd=lambda: 0.0,
-        )
-
-    def get_idn(self):
-        return {
-            "vendor": "SQUAD",
-            "model": "Dummy Lockin",
-            "serial": "DUMMY",
-            "firmware": None,
-        }
-
+dummy_dac = ShellInstrument("dummy_dac", {})
+dummy_acquisition = ShellInstrument("dummy_lockin", {})
 
 #%%
 
-clock = Delay("clock")
-dummy_acquisition = DummyAcquisition("dummy_lockin")
+dummy_acquisition.add_parameter(
+    "R",
+    label="Dummy R",
+    unit="V",
+    get_cmd=lambda: 0.0,
+)
+
+dummy_acquisition.add_parameter(
+    "P",
+    label="Dummy Phase",
+    unit="deg",
+    get_cmd=lambda: 0.0,
+)
+
+#%%
+
+dummy_dac.add_parameter(
+    "V1",
+    label="Dummy DAC 1",
+    unit="V",
+    set_cmd=lambda x: None,
+)
+
+dummy_dac.add_parameter(
+    "V2",
+    label="Dummy DAC 2",
+    unit="V",
+    set_cmd=lambda x: None,
+)
 
 #%%
 
 st = Station("Test")
-st.instruments = [clock, dummy_acquisition]
+st.instruments = [dummy_dac, dummy_acquisition]
 
 #%%
 
@@ -71,20 +68,30 @@ run_dict = {
 
 #%%
 
-t = st.add_parameter("t", "Time", clock.time)
+v1 = st.add_parameter("V1", "DAC 1", dummy_dac.V1)
+v2 = st.add_parameter("V2", "DAC 2", dummy_dac.V2)
 
 lockin_r = st.add_parameter("lockin_r", "Lock-in R", dummy_acquisition.R)
 lockin_p = st.add_parameter("lockin_p", "Lock-in Phase", dummy_acquisition.P)
 
+
 #%%
 
+tuning = LiveTuning(
+    station=st,
+    controls=[],
+    refresh_interval=1,
+)
 
-time_sweep = Sweep(t, 0, 1, num=101, delay=0.01, start_delay=0.01)
+#%%
+
+v1_sweep = Sweep(v1, 0, 1, num=41, delay=0.001, start_delay=0.001)
+v2_sweep = Sweep(v2, 0, 1, num=41, delay=0.001, start_delay=0.001)
 
 buffered_sweep = {
-    "instrument": NodeDelay(inst=clock),
+    "instrument": NodeDelay(inst=dummy_dac),
     "sweeps": [
-        time_sweep,
+        v1_sweep, v2_sweep
     ],
     "nodes": [
         {
@@ -100,14 +107,6 @@ buffered_sweep = {
         }
     ],
 }
-
-#%%
-
-tuning = LiveTuning(
-    station=st,
-    controls=[],
-    refresh_interval=1,
-)
 
 #%%
 
