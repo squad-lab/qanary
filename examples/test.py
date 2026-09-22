@@ -2,7 +2,6 @@ from qcodes.instrument import Instrument
 
 
 class ShellInstrument(Instrument):
-
     def __init__(
         self,
         name: str,

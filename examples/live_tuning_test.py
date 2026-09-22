@@ -1,12 +1,7 @@
 # %%
 
-from qcdrivers.buffered.squad import NodeDummySweeper, NodeDummyAcquisition
+from qcdrivers.buffered.squad import NodeDummyAcquisition, NodeDummySweeper
 from qcdrivers.squad.helpers import ShellInstrument
-
-from qanary.live_tuning import LiveTuning
-from qanary.measure import Measurement, Station
-from qanary.sweep import Sweep
-
 from qcodes.instrument import Instrument
 
 from qanary.live_tuning import LiveTuning
@@ -35,7 +30,7 @@ dummy_acquisition.add_parameter(
     get_cmd=lambda: 0.0,
 )
 
-#%%
+# %%
 
 dummy_dac.add_parameter(
     "V1",
@@ -76,7 +71,7 @@ lockin_r = st.add_parameter("lockin_r", "Lock-in R", dummy_acquisition.R)
 lockin_p = st.add_parameter("lockin_p", "Lock-in Phase", dummy_acquisition.P)
 
 
-#%%
+# %%
 
 tuning = LiveTuning(
     station=st,
@@ -84,16 +79,14 @@ tuning = LiveTuning(
     refresh_interval=1,
 )
 
-#%%
+# %%
 
 v1_sweep = Sweep(v1, 0, 1, num=41, delay=0.001, start_delay=0.001)
 v2_sweep = Sweep(v2, 0, 1, num=41, delay=0.001, start_delay=0.001)
 
 buffered_sweep = {
     "instrument": NodeDummySweeper(inst=dummy_dac),
-    "sweeps": [
-        v1_sweep, v2_sweep
-    ],
+    "sweeps": [v1_sweep, v2_sweep],
     "nodes": [
         {
             "instrument": NodeDummyAcquisition(
@@ -110,12 +103,7 @@ buffered_sweep = {
 
 # %%
 
-tuning.start(
-    [buffered_sweep],
-    dependents=[],
-    **run_dict,
-    no_hashing=True
-)
+tuning.start([buffered_sweep], dependents=[], **run_dict, no_hashing=True)
 
 # %%
 
