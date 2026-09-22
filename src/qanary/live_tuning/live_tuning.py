@@ -41,6 +41,7 @@ _SUPPORTED_DAC_NODES = {
     ("qcdrivers.buffered.basel.nodes", "NodeBaselDAC"),
     ("qcdrivers.buffered.qdevil.nodes", "NodeQDAC2"),
     ("qcdrivers.buffered.squad.nodes", "NodeDummySweeper"),  # used for testing
+    ("__main__", "NodeDummySweeper"),  # used for testing
 }
 
 
