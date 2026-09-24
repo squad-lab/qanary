@@ -18,8 +18,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from qanary import sweep as sweep_module
 from qanary.sweep import (
     CircularSweep,
+    PointSweep,
     SegmentedSweep,
     Sweep,
     _sweep_param,
@@ -173,6 +175,62 @@ class TestCircularSweep:
 
         assert circular.num == 4
         assert len(circular.values) == 8
+
+
+class TestPointSweep:
+    """Explicit, possibly repeated setpoints in the order supplied."""
+
+    def test_is_part_of_the_public_sweep_api(self):
+        assert "PointSweep" in sweep_module.__all__
+
+    def test_keeps_arbitrary_points_in_order(self, gates):
+        swept = PointSweep(gates.x, [1.0, -0.5, 1.0, 3.25])
+
+        np.testing.assert_allclose(swept.values, [1.0, -0.5, 1.0, 3.25])
+        assert swept.start == 1.0
+        assert swept.stop == 3.25
+        assert swept.num == 4
+
+    def test_a_single_parameter_is_wrapped_in_a_list(self, gates):
+        assert PointSweep(gates.x, [0.0]).parameter == [gates.x]
+
+    def test_several_parameters_share_the_points(self, gates):
+        swept = PointSweep([gates.x, gates.y], [0.0, 2.0, 1.0])
+
+        assert swept.parameter == [gates.x, gates.y]
+
+    def test_keeps_delay_and_start_delay(self, gates):
+        swept = PointSweep(gates.x, [0.0, 1.0], delay=0.25, start_delay=1.5)
+
+        assert swept.delay == 0.25
+        assert swept.start_delay == 1.5
+
+    @pytest.mark.parametrize(
+        "points",
+        [
+            1.0,
+            "1, 2",
+            b"\x01\x02",
+            [1.0, "two"],
+            [True, False],
+            [float("nan"), float("nan")],
+            [float("inf")],
+            [],
+        ],
+        ids=[
+            "scalar",
+            "string",
+            "bytes",
+            "non-numeric-item",
+            "booleans",
+            "nan",
+            "infinity",
+            "empty",
+        ],
+    )
+    def test_requires_a_non_empty_sequence_of_finite_real_numbers(self, gates, points):
+        with pytest.raises(ValueError, match="sequence of finite real numbers"):
+            PointSweep(gates.x, points)
 
 
 class TestSegmentedSweep:

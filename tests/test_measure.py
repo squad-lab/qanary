@@ -43,7 +43,7 @@ from qanary.measure import (
     _unregister_memory_store,
     run,
 )
-from qanary.sweep import Sweep
+from qanary.sweep import PointSweep, Sweep
 
 
 class TestSanitizeForJson:
@@ -1396,6 +1396,21 @@ class TestBufferedRun:
         exported = xr.load_dataset(measurement.data)["buffered_signal"].values
         np.testing.assert_allclose(exported[0], np.arange(4.0) + 10.0)
         np.testing.assert_allclose(exported[1], np.arange(4.0) + 20.0)
+
+    def test_repeated_slow_coordinates_keep_each_buffered_block(
+        self, measurement, gates, buffered
+    ):
+        """Buffered results use positions too when slow labels are repeated."""
+        measurement.run(
+            [PointSweep(gates.x, [0.0, 1.0, 0.0]), buffered.payload],
+            [],
+            no_hashing=True,
+        )
+
+        exported = xr.load_dataset(measurement.data)["buffered_signal"].values
+        np.testing.assert_allclose(exported[0], np.arange(4.0) + 10.0)
+        np.testing.assert_allclose(exported[1], np.arange(4.0) + 20.0)
+        np.testing.assert_allclose(exported[2], np.arange(4.0) + 30.0)
 
     def test_the_tree_is_re_armed_and_re_run_at_every_slow_point(
         self, measurement, gates, buffered
