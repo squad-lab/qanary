@@ -662,6 +662,8 @@ def _stepper(
     if sweep_index_cache is None:
         sweep_index_cache = [None] * len(independents)
 
+    # NOTE: Measurement.run supplies buffered trees separately; legacy direct
+    # callers must provide ordinary sweep objects here until normalization below.
     has_duplicate_sweep_values = any(
         len(sw.values) != len(set(sw.values)) for sw in sweeps
     )
@@ -818,13 +820,15 @@ def _stepper(
                 exc,
             )
 
-    def _run_buffered_block(slow_indexers, slow_position_indexers=None):
+    def _run_buffered_block(slow_indexers, slow_position_indexers):
         """
         Run, fetch, and store one complete hardware-buffered block.
 
         Args:
             slow_indexers (dict[str, Any]): Coordinate selections for the
                 surrounding slow sweeps.
+            slow_position_indexers (dict[str, int]): Positional selections for
+                slow dimensions whose coordinate labels are repeated.
 
         Returns:
             dict[Any, dict[str, Any]]: A mapping from buffered dependent
@@ -834,9 +838,6 @@ def _stepper(
         points, estimated_duration = _buffered_sweep_progress_info(buffered_sweep)
         progress = _BufferedProgress(bar, points, estimated_duration)
         progress.start()
-
-        if slow_position_indexers is None:
-            slow_position_indexers = {}
 
         try:
             # Instrument access stays on the caller thread. Only the estimated
@@ -952,13 +953,13 @@ def _stepper(
                 for sw in sweeps:
                     for p in sw.parameter:
                         try:
-                            idx = independents.index(p)
+                            cache_idx = independents.index(p)
                         except ValueError:
                             logger.error(
                                 f"Independent parameter {p.name} not found in independents list, skipping"
                             )
                             continue
-                        slow_indexers[p.name] = sweep_cache[idx]
+                        slow_indexers[p.name] = sweep_cache[cache_idx]
                         slow_position_indexers[p.name] = sweep_index_cache[cache_idx]
 
                 # `dependents` never contains buffered dependents -- those are
@@ -978,7 +979,7 @@ def _stepper(
                 if buffered_sweep is not None:
                     # Re-arm instruments for this buffered tree at every
                     # slow-step: instruments can only be read once after a sweep.
-                    _run_buffered_block(slow_indexers)
+                    _run_buffered_block(slow_indexers, slow_position_indexers)
                 else:
                     bar.update(1)
 

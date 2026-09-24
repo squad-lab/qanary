@@ -27,7 +27,7 @@ import zarr
 from qcodes.parameters import Parameter
 
 from qanary import sweep as sweep_module
-from qanary.sweep import Sweep, _stepper
+from qanary.sweep import PointSweep, Sweep, _stepper
 
 
 @pytest.fixture
@@ -127,6 +127,58 @@ class TestGridFilling:
 
         np.testing.assert_allclose(dataset["signal"].values, 100.0 * swept.values)
         assert bar.n == 5
+
+    def test_repeated_coordinates_keep_each_reading(self, gates, bar):
+        """
+        Label-based assignment selects every matching coordinate. A point sweep
+        instead has to write by position so repeated visits remain distinct.
+
+        """
+        readings = iter([10.0, 20.0, 30.0, 40.0])
+        dependent = Parameter(
+            "signal", unit="A", instrument=gates, get_cmd=lambda: next(readings)
+        )
+        swept = PointSweep(gates.x, [0.0, 1.0, 0.0, 1.0])
+        dataset = make_dataset(swept)
+
+        step(dataset, [swept], [dependent], bar)
+
+        np.testing.assert_allclose(dataset["signal"].values, [10.0, 20.0, 30.0, 40.0])
+        assert bar.n == 4
+
+    def test_repeated_outer_coordinates_keep_their_grid_positions(self, gates, bar):
+        """Every dimension needs its own positional index during recursion."""
+        readings = iter(np.arange(1.0, 7.0))
+        dependent = Parameter(
+            "signal", unit="A", instrument=gates, get_cmd=lambda: next(readings)
+        )
+        outer = PointSweep(gates.x, [0.0, 1.0, 0.0])
+        inner = Sweep(gates.y, 0.0, 1.0, num=2)
+        dataset = make_dataset(outer, inner)
+
+        step(dataset, [outer, inner], [dependent], bar)
+
+        np.testing.assert_allclose(
+            dataset["signal"].values, np.arange(1.0, 7.0).reshape(3, 2)
+        )
+        assert bar.n == 6
+
+    def test_repeated_points_shared_by_parameters_fill_the_diagonal(self, gates, bar):
+        """Each parameter in a shared point sweep keeps the same visit index."""
+        readings = iter([10.0, 20.0, 30.0])
+        dependent = Parameter(
+            "signal", unit="A", instrument=gates, get_cmd=lambda: next(readings)
+        )
+        swept = PointSweep([gates.x, gates.y], [0.0, 1.0, 0.0])
+        dataset = make_dataset(swept)
+
+        step(dataset, [swept], [dependent], bar)
+
+        np.testing.assert_allclose(
+            dataset["signal"].values,
+            [[10.0, np.nan, np.nan], [np.nan, 20.0, np.nan], [np.nan, np.nan, 30.0]],
+        )
+        assert bar.n == 3
 
     def test_a_two_dimensional_sweep_lands_on_the_expected_cells(
         self, gates, signal, bar
