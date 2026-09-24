@@ -1,5 +1,7 @@
 import hashlib
 import os
+from math import isfinite
+from numbers import Real
 from threading import Event, Thread
 from time import monotonic, sleep, time
 from typing import Any, Callable, Optional, Sequence
@@ -20,6 +22,7 @@ from qanary.logger import get_logger
 __all__ = [
     "Sweep",
     "CircularSweep",
+    "PointSweep",
     "SegmentedSweep",
     "sweeper",
     "rampdown",
@@ -411,14 +414,25 @@ class PointSweep:
                 setpoint. Defaults to 0.
 
         Raises:
-            ValueError: If points is not a sequence of numbers.
+            ValueError: If points is not a non-empty sequence of finite real
+                numbers.
 
         """
 
-        # check if points is a sequence of numbers
-        if not isinstance(points, Sequence):
-            logger.error("Points must be a sequence of numbers")
-            raise ValueError("Points must be a sequence of numbers")
+        # NOTE: NumPy arrays are not runtime Sequences; pass ``points.tolist()``.
+        if (
+            not isinstance(points, Sequence)
+            or isinstance(points, (str, bytes))
+            or len(points) == 0
+            or not all(
+                isinstance(point, Real)
+                and not isinstance(point, bool)
+                and isfinite(point)
+                for point in points
+            )
+        ):
+            logger.error("Points must be a sequence of finite real numbers")
+            raise ValueError("Points must be a sequence of finite real numbers")
 
         if not isinstance(parameter, Sequence):
             self.parameter = [parameter]
