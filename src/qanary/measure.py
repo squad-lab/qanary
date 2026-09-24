@@ -886,6 +886,8 @@ class Measurement:
 
     def run(
         self,
+        # NOTE: PointSweep is structurally compatible at runtime even though
+        # this legacy annotation names only Sweep and CircularSweep.
         sweeps: Union[Sweep, CircularSweep, Sequence[Union[Sweep, dict]]],
         dependents: list,
         interrupt: Callable = lambda: False,
@@ -1180,6 +1182,7 @@ class Measurement:
 
 
 def run(
+    # NOTE: PointSweep is structurally compatible at runtime; see Measurement.run.
     sweeps: Union[Sweep, CircularSweep, Sequence[Sweep]],
     dependents: list,
     wafer_id: str,
