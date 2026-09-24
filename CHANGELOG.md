@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.12.0 (2026-09-24)
+
+### Features
+
+- Allow override in adding parameter to station
+  ([`8ec3ee0`](https://gitlab.com/squad-lab/qanary/-/commit/8ec3ee057b2dda75726e600a5d4007fc2e4978b3))
+
+
 ## v0.11.0 (2026-09-16)
 
 ### Chores
