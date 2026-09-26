@@ -353,9 +353,6 @@ class Station:
             param_type = param_type if param_type is not None else "single_gate"
             pm = ParameterMixin(params[0], name, label, param_type)
 
-        # Keep access to the original QCoDeS parameter(s).
-        pm.source_parameters = params
-
         # Compare by name, not by wrapper identity.
         for i, existing in enumerate(self.parameters):
             if existing.name == pm.name:
