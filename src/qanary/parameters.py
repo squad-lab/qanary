@@ -45,6 +45,8 @@ class ParameterMixin:
         self.__dict__.update(param.__dict__)
         self.__class__ = param.__class__
 
+        self.source_parameters = (param,)
+
         self.param_type = param_type
         if name:
             self._short_name = name
@@ -106,6 +108,8 @@ class VirtualGate(Parameter):
         """
         self.gates = gates
         self.param_type = param_type
+
+        self.source_parameters = tuple(gates)
 
         self.factors = factors
         self.offsets = offsets
@@ -239,6 +243,7 @@ class MultiChannelParameter(Parameter):
 
         """
         channels = list(param)
+        self.source_parameters = tuple(param)
 
         if not channels:
             raise ValueError("At least one channel must be provided")
