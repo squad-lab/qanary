@@ -73,7 +73,7 @@ vg_perpendicular = VirtualGate(
     offsets=[1, 1],
 )
 
-#%%
+# %%
 
 x_par, y_par = [], []
 x_perp, y_perp = [], []
