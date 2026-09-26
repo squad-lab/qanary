@@ -348,11 +348,7 @@ class Station:
 
         # Only now construct the new parameter.
         if len(params) > 1:
-            param_type = (
-                param_type
-                if param_type is not None
-                else "multi_channel_gate"
-            )
+            param_type = param_type if param_type is not None else "multi_channel_gate"
 
             pm = MultiChannelParameter(
                 params,
@@ -362,11 +358,7 @@ class Station:
             )
 
         else:
-            param_type = (
-                param_type
-                if param_type is not None
-                else "single_gate"
-            )
+            param_type = param_type if param_type is not None else "single_gate"
 
             pm = ParameterMixin(
                 params[0],
@@ -389,13 +381,11 @@ class Station:
         """
 
         if pm not in self.parameters:
-            raise ValueError(
-                f"Parameter {pm.name} not found in station {self.name}"
-            )
+            raise ValueError(f"Parameter {pm.name} not found in station {self.name}")
 
         self._remove_from_instrument(pm)
         self.parameters.remove(pm)
-    
+
     def _remove_from_instrument(self, param):
         instrument = getattr(param, "instrument", None)
 
