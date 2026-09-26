@@ -1,19 +1,20 @@
-#%%
+# %%
 
 from qcdrivers.squad import ShellInstrument
+
 from qanary.measure import Station
 
-#%%
+# %%
 
 dummy = ShellInstrument("dummy", {})
 dummy2 = ShellInstrument("dummy2", {})
 
-#%%
+# %%
 
 st = Station("test")
 st.instruments = [dummy, dummy2]
 
-#%%
+# %%
 
 v1 = None
 v2 = None
@@ -44,7 +45,7 @@ dummy2.add_parameter(
 )
 
 
-#%%
+# %%
 
 multi_param = st.add_parameter(
     param=[dummy.ch1, dummy.ch2],
@@ -52,11 +53,11 @@ multi_param = st.add_parameter(
     label="Custom Multi Parameter 1",
 )
 
-#%%
+# %%
 
 dummy_ch1 = st.add_parameter("ch1", "Channel 1", dummy.ch1, param_type="testing")
 
-#%%
+# %%
 
 # test outputs
 multi_param.set(5.0)
