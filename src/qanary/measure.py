@@ -322,67 +322,90 @@ class Station:
         """
         Add a named parameter to the station.
 
-        A sequence is represented by a
-        :class:`~qanary.parameters.MultiChannelParameter`; a single QCoDeS
-        parameter is aliased with :class:`~qanary.parameters.ParameterMixin`.
-
-        Args:
-            name (str): Name used in measurement metadata and datasets.
-            label (str): Human-readable label.
-            param (Parameter | Sequence[Parameter]): Parameter or channels to
-                register.
-            param_type (str): Parameter category stored in snapshots. Defaults
-                to None.
-            override (bool): Replace an existing parameter with the same
-
-        Returns:
-            ParameterMixin | MultiChannelParameter: Registered station
-                parameter.
-
-        Raises:
-            ValueError: If another station parameter already uses *name* and override is False.
-
+        If override=True, an existing station parameter with the same name is
+        removed before the replacement is constructed.
         """
 
         params = tuple(param) if isinstance(param, Sequence) else (param,)
 
+        # Find existing station parameter BEFORE constructing the new parameter.
+        existing_index = None
+        existing = None
+
+        for i, station_param in enumerate(self.parameters):
+            if station_param.name == name:
+                existing_index = i
+                existing = station_param
+                break
+
+        if existing is not None:
+            if not override:
+                raise ValueError(
+                    f"Parameter {name} already exists in station {self.name}"
+                )
+
+            self._remove_from_instrument(existing)
+
+        # Only now construct the new parameter.
         if len(params) > 1:
-            param_type = param_type if param_type is not None else "multi_channel_gate"
-            pm = MultiChannelParameter(params, name, label, param_type)
+            param_type = (
+                param_type
+                if param_type is not None
+                else "multi_channel_gate"
+            )
+
+            pm = MultiChannelParameter(
+                params,
+                name,
+                label,
+                param_type,
+            )
+
         else:
-            param_type = param_type if param_type is not None else "single_gate"
-            pm = ParameterMixin(params[0], name, label, param_type)
+            param_type = (
+                param_type
+                if param_type is not None
+                else "single_gate"
+            )
 
-        # Compare by name, not by wrapper identity.
-        for i, existing in enumerate(self.parameters):
-            if existing.name == pm.name:
-                if not override:
-                    raise ValueError(
-                        f"Parameter {pm.name} already exists in station {self.name}"
-                    )
+            pm = ParameterMixin(
+                params[0],
+                name,
+                label,
+                param_type,
+            )
 
-                self.parameters[i] = pm
-                return pm
+        if existing_index is not None:
+            self.parameters[existing_index] = pm
+        else:
+            self.parameters.append(pm)
 
-        self.parameters.append(pm)
         return pm
 
-    def remove_parameter(self, pm: ParameterMixin):
+    def remove_parameter(self, pm):
         """
-        Remove a previously registered parameter.
-
-        Args:
-            pm (ParameterMixin): Parameter returned by
-                :meth:`add_parameter`.
-
-        Raises:
-            ValueError: If *pm* is not registered with this station.
-
+        Remove a previously registered parameter from the station and, if it is
+        registered there, from its underlying QCoDeS instrument.
         """
-        if pm in self.parameters:
-            self.parameters.remove(pm)
-        else:
-            raise ValueError(f"Parameter {pm.name} not found in station {self.name}")
+
+        if pm not in self.parameters:
+            raise ValueError(
+                f"Parameter {pm.name} not found in station {self.name}"
+            )
+
+        self._remove_from_instrument(pm)
+        self.parameters.remove(pm)
+    
+    def _remove_from_instrument(self, param):
+        instrument = getattr(param, "instrument", None)
+
+        if instrument is None:
+            return
+
+        registered = instrument.parameters.get(param.name)
+
+        if registered is param:
+            instrument.remove_parameter(param.name)
 
 
 class Measurement:
