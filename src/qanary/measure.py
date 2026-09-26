@@ -316,7 +316,7 @@ class Station:
         name: str,
         label: str,
         param: Parameter | Sequence[Parameter],
-        param_type: str = "gate",
+        param_type: str = None,
         override: bool = False,
     ):
         """
@@ -332,7 +332,7 @@ class Station:
             param (Parameter | Sequence[Parameter]): Parameter or channels to
                 register.
             param_type (str): Parameter category stored in snapshots. Defaults
-                to ``"gate"``.
+                to None.
             override (bool): Replace an existing parameter with the same
 
         Returns:
@@ -343,10 +343,18 @@ class Station:
             ValueError: If another station parameter already uses *name* and override is False.
 
         """
-        if isinstance(param, Sequence):
-            pm = MultiChannelParameter(param, name, label, param_type)
+
+        params = tuple(param) if isinstance(param, Sequence) else (param,)
+
+        if len(params) > 1:
+            param_type = param_type if param_type is not None else "multi_channel_gate"
+            pm = MultiChannelParameter(params, name, label, param_type)
         else:
-            pm = ParameterMixin(param, name, label, param_type)
+            param_type = param_type if param_type is not None else "single_gate"
+            pm = ParameterMixin(params[0], name, label, param_type)
+
+        # Keep access to the original QCoDeS parameter(s).
+        pm.source_parameters = params
 
         # Compare by name, not by wrapper identity.
         for i, existing in enumerate(self.parameters):
