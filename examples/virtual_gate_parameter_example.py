@@ -1,3 +1,5 @@
+# %%
+
 import matplotlib.pyplot as plt
 import numpy as np
 from qcdrivers.squad import ShellInstrument
@@ -5,8 +7,12 @@ from qcdrivers.squad import ShellInstrument
 from qanary.measure import Station
 from qanary.parameters import VirtualGate
 
+# %%
+
 dummy = ShellInstrument("dummy", {})
 dummy2 = ShellInstrument("dummy2", {})
+
+# %%
 
 v1 = None
 v2 = None
@@ -36,13 +42,19 @@ dummy2.add_parameter(
     get_cmd=lambda: v3,
 )
 
+# %%
+
 st = Station("test")
 st.instruments = [dummy, dummy2]
+
+# %%
 
 dummy_ch1 = st.add_parameter("ch1", "Channel 1", dummy.ch1)
 dummy_ch2 = st.add_parameter("ch2", "Channel 2", dummy.ch2)
 
 dummy_chx = st.add_parameter("ch1", "Channel 1", dummy.ch1, override=True)
+
+# %%
 
 # rotation by a certain angle, an offset by certain coordinates
 theta = np.deg2rad(30)
@@ -60,6 +72,8 @@ vg_perpendicular = VirtualGate(
     factors=[-np.sin(theta), np.cos(theta)],
     offsets=[1, 1],
 )
+
+# %%
 
 x_par, y_par = [], []
 x_perp, y_perp = [], []
