@@ -9,7 +9,6 @@ import ipywidgets as widgets
 from IPython.display import display
 from qcodes.parameters import Parameter
 
-
 if TYPE_CHECKING:
     from qanary.live_tuning.live_tuning import LiveTuning
 
@@ -43,9 +42,7 @@ class LiveTuningWidgets:
             )
 
         if step <= 0:
-            raise ValueError(
-                "Widget step must be > 0."
-            )
+            raise ValueError("Widget step must be > 0.")
 
         self.tuning = tuning
         self.controls = list(controls)
@@ -72,20 +69,14 @@ class LiveTuningWidgets:
             disabled=True,
         )
 
-        self.reset_button.on_click(
-            self._reset_controls
-        )
+        self.reset_button.on_click(self._reset_controls)
 
         self._container = self._create_widgets()
 
         # Widgets follow LiveTuning start/stop state.
-        self.tuning.add_state_callback(
-            self._update_running_state
-        )
+        self.tuning.add_state_callback(self._update_running_state)
 
-        self._update_running_state(
-            self.tuning.running
-        )
+        self._update_running_state(self.tuning.running)
 
         if auto_display and self.controls:
             self.display()
@@ -100,22 +91,16 @@ class LiveTuningWidgets:
 
     def _validate_configuration(self) -> None:
 
-        names = [
-            parameter.name
-            for parameter in self.controls
-        ]
+        names = [parameter.name for parameter in self.controls]
 
         if len(names) != len(set(names)):
-            raise ValueError(
-                "Live tuning control names must be unique."
-            )
+            raise ValueError("Live tuning control names must be unique.")
 
         for parameter, value_range in zip(
             self.controls,
             self.ranges,
             strict=True,
         ):
-
             if len(value_range) != 2:
                 raise ValueError(
                     f"Control range for {parameter.name!r} "
@@ -127,8 +112,7 @@ class LiveTuningWidgets:
 
             if not isfinite(minimum) or not isfinite(maximum):
                 raise ValueError(
-                    f"Control range for {parameter.name!r} "
-                    "must be finite."
+                    f"Control range for {parameter.name!r} must be finite."
                 )
 
             if minimum >= maximum:
@@ -158,9 +142,7 @@ class LiveTuningWidgets:
             #
             # The real initial value will be loaded later from
             # Snapshot Before.
-            temporary_value = (
-                minimum + maximum
-            ) / 2
+            temporary_value = (minimum + maximum) / 2
 
             slider = widgets.FloatSlider(
                 value=temporary_value,
@@ -169,12 +151,9 @@ class LiveTuningWidgets:
                 step=self.step,
                 description="",
                 continuous_update=self.continuous_update,
-
                 # We provide our own value display above the handle.
                 readout=False,
-
                 disabled=True,
-
                 layout=widgets.Layout(
                     width="450px",
                 ),
@@ -189,28 +168,20 @@ class LiveTuningWidgets:
             )
 
             label = widgets.HTML(
-                value=(
-                    f"<b>{escape(parameter.label or parameter.name)}</b>"
-                ),
+                value=(f"<b>{escape(parameter.label or parameter.name)}</b>"),
                 layout=widgets.Layout(
                     width="170px",
                 ),
             )
 
             slider.observe(
-                self._make_slider_callback(
-                    parameter
-                ),
+                self._make_slider_callback(parameter),
                 names="value",
             )
 
-            self.sliders[
-                parameter.name
-            ] = slider
+            self.sliders[parameter.name] = slider
 
-            self.value_labels[
-                parameter.name
-            ] = value_label
+            self.value_labels[parameter.name] = value_label
 
             slider_stack = widgets.VBox(
                 [
@@ -278,19 +249,14 @@ class LiveTuningWidgets:
 
             if name not in parameter_snapshot:
                 errors.append(
-                    f"{name!r}: parameter is not present "
-                    "in the start snapshot."
+                    f"{name!r}: parameter is not present in the start snapshot."
                 )
                 continue
 
-            raw_value = parameter_snapshot[
-                name
-            ].get("value")
+            raw_value = parameter_snapshot[name].get("value")
 
             if raw_value is None:
-                errors.append(
-                    f"{name!r}: start snapshot value is None."
-                )
+                errors.append(f"{name!r}: start snapshot value is None.")
                 continue
 
             try:
@@ -298,15 +264,13 @@ class LiveTuningWidgets:
 
             except (TypeError, ValueError):
                 errors.append(
-                    f"{name!r}: start snapshot value "
-                    f"{raw_value!r} is not numeric."
+                    f"{name!r}: start snapshot value {raw_value!r} is not numeric."
                 )
                 continue
 
             if not isfinite(value):
                 errors.append(
-                    f"{name!r}: start snapshot value "
-                    f"{value!r} is not finite."
+                    f"{name!r}: start snapshot value {value!r} is not finite."
                 )
                 continue
 
@@ -328,10 +292,7 @@ class LiveTuningWidgets:
             message = (
                 "Invalid live tuning control values in "
                 "the start snapshot:\n\n"
-                + "\n".join(
-                    f"  - {error}"
-                    for error in errors
-                )
+                + "\n".join(f"  - {error}" for error in errors)
             )
 
             raise ValueError(message)
@@ -344,13 +305,9 @@ class LiveTuningWidgets:
 
         try:
             for parameter in self.controls:
-                value = start_values[
-                    parameter.name
-                ]
+                value = start_values[parameter.name]
 
-                slider = self.sliders[
-                    parameter.name
-                ]
+                slider = self.sliders[parameter.name]
 
                 slider.value = value
 
@@ -362,9 +319,7 @@ class LiveTuningWidgets:
         finally:
             self._programmatic_update = False
 
-        self._update_running_state(
-            self.tuning.running
-        )
+        self._update_running_state(self.tuning.running)
 
         return dict(start_values)
 
@@ -381,9 +336,7 @@ class LiveTuningWidgets:
             if change["name"] != "value":
                 return
 
-            value = float(
-                change["new"]
-            )
+            value = float(change["new"])
 
             # Always update visual value.
             self._update_value_label(
@@ -415,26 +368,19 @@ class LiveTuningWidgets:
         value: float,
     ) -> None:
 
-        slider = self.sliders[
-            parameter.name
-        ]
+        slider = self.sliders[parameter.name]
 
         minimum = float(slider.min)
         maximum = float(slider.max)
 
-        fraction = (
-            (value - minimum)
-            / (maximum - minimum)
-        )
+        fraction = (value - minimum) / (maximum - minimum)
 
         fraction = max(
             0.0,
             min(1.0, fraction),
         )
 
-        percentage = (
-            100.0 * fraction
-        )
+        percentage = 100.0 * fraction
 
         # FloatSlider handles have a finite width.
         #
@@ -442,17 +388,11 @@ class LiveTuningWidgets:
         # left: XX%, which would be slightly wrong close to the ends.
         handle_width = 16.0
 
-        pixel_correction = (
-            handle_width * fraction
-        )
+        pixel_correction = handle_width * fraction
 
-        unit = escape(
-            str(parameter.unit or "")
-        )
+        unit = escape(str(parameter.unit or ""))
 
-        self.value_labels[
-            parameter.name
-        ].value = f"""
+        self.value_labels[parameter.name].value = f"""
         <div style="
             position: relative;
             width: 100%;
@@ -513,14 +453,9 @@ class LiveTuningWidgets:
 
         try:
             for parameter in self.controls:
+                value = self._start_values[parameter.name]
 
-                value = self._start_values[
-                    parameter.name
-                ]
-
-                slider = self.sliders[
-                    parameter.name
-                ]
+                slider = self.sliders[parameter.name]
 
                 slider.value = value
 
@@ -539,9 +474,7 @@ class LiveTuningWidgets:
         for parameter in self.controls:
             self.tuning.set(
                 parameter,
-                self._start_values[
-                    parameter.name
-                ],
+                self._start_values[parameter.name],
             )
 
     # ------------------------------------------------------------------
@@ -553,25 +486,16 @@ class LiveTuningWidgets:
         running: bool,
     ) -> None:
 
-        ready = bool(
-            self._start_values
-        ) or not self.controls
+        ready = bool(self._start_values) or not self.controls
 
         for slider in self.sliders.values():
-            slider.disabled = not (
-                running and ready
-            )
+            slider.disabled = not (running and ready)
 
-        self.reset_button.disabled = not (
-            running
-            and bool(self._start_values)
-        )
+        self.reset_button.disabled = not (running and bool(self._start_values))
 
     # ------------------------------------------------------------------
     # Display
     # ------------------------------------------------------------------
 
     def display(self) -> None:
-        display(
-            self._container
-        )
+        display(self._container)

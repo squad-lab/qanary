@@ -1,11 +1,6 @@
 # %%
 
-from math import isclose, prod
-from time import sleep
-from typing import Sequence
 
-import numpy as np
-from qcdrivers.buffered._typing import SweepLike
 from qcdrivers.buffered.squad import NodeDummyAcquisition, NodeDummySweeper
 from qcdrivers.squad.helpers import ShellInstrument
 from qcodes.instrument import Instrument
@@ -92,7 +87,9 @@ v1 = st.add_parameter("V1", "DAC 1", dummy_dac.V1)
 v2 = st.add_parameter("V2", "DAC 2", dummy_dac.V2)
 v3 = st.add_parameter("V3", "DAC 3", dummy_dac.V3)
 
-value = st.add_parameter("acqusition_value", "Dummy Acquistion Value", dummy_acquisition.value)
+value = st.add_parameter(
+    "acqusition_value", "Dummy Acquistion Value", dummy_acquisition.value
+)
 
 param_x = st.add_parameter(
     "param_x",

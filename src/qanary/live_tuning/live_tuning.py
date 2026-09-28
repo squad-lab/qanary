@@ -133,23 +133,15 @@ class ControlMailbox:
                 values[name] = parameter()
 
         else:
-            missing = (
-                set(self._parameters)
-                - set(values)
-            )
+            missing = set(self._parameters) - set(values)
 
             if missing:
                 raise ValueError(
                     "Missing initial values for live tuning controls: "
-                    + ", ".join(
-                        sorted(missing)
-                    )
+                    + ", ".join(sorted(missing))
                 )
 
-            values = {
-                name: values[name]
-                for name in self._parameters
-            }
+            values = {name: values[name] for name in self._parameters}
 
         with self._lock:
             self._applied = dict(values)
@@ -924,15 +916,9 @@ class LiveTuning:
         # snapshot handling
         self._snapshot_before = self._take_snapshot(phase="before")
 
-        control_start_values = (
-            self.widgets.load_start_snapshot(
-                self._snapshot_before
-            )
-        )
+        control_start_values = self.widgets.load_start_snapshot(self._snapshot_before)
 
-        self.controls.initialize(
-            control_start_values
-        )
+        self.controls.initialize(control_start_values)
 
         template.attrs["Measurement Mode"] = "live_tuning"
         template.attrs["Live Tuning State"] = "running"
