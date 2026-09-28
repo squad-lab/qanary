@@ -36,7 +36,7 @@ dependencies = [
   "pyvisa-py>=0.7.2",
   "zeroconf>=0.147.2",
   "qimchi-connect>=0.2.0",
-  "qcdrivers>=0.2.0",
+  "qcdrivers>=0.6.1",
 ]
 
 [project.optional-dependencies]

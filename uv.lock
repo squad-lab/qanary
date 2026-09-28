@@ -1613,7 +1613,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -2013,7 +2013,7 @@ wheels = [
 
 [[package]]
 name = "qanary"
-version = "0.10.1"
+version = "0.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "checksumdir" },
@@ -2073,7 +2073,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=5" },
     { name = "pyvisa", specifier = ">=1.14.1" },
     { name = "pyvisa-py", specifier = ">=0.7.2" },
-    { name = "qcdrivers", specifier = ">=0.2.0" },
+    { name = "qcdrivers", specifier = ">=0.6.1" },
     { name = "qcodes", specifier = ">=0.59.0" },
     { name = "qcodes-contrib-drivers", specifier = ">=0.23.0" },
     { name = "qimchi-connect", specifier = ">=0.2.0" },
@@ -2099,13 +2099,14 @@ docs = [
 
 [[package]]
 name = "qcdrivers"
-version = "0.2.0"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ipykernel" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pytest" },
     { name = "pyvisa" },
     { name = "pyvisa-py" },
     { name = "qcodes" },
@@ -2114,9 +2115,9 @@ dependencies = [
     { name = "zhinst" },
     { name = "zhinst-qcodes" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c7/bc/6062d78ace89721c17d50d26a814b9e3f252aaf11d1b7b7589e026a978b5/qcdrivers-0.2.0.tar.gz", hash = "sha256:0833400b218a730031397398dcb45c7b1e8e991f47c56dca658042429ebfbd5c", size = 575880, upload-time = "2026-09-06T19:26:24.822Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/6b/e233b8aa4c226e397cfbe8b2916c49908bce2d2a14adb174ab428eed7a59/qcdrivers-0.6.1.tar.gz", hash = "sha256:faad9eab454d037395069832063c3163a8a6b645077177ef04493d2c5aeff94c", size = 582147, upload-time = "2026-09-26T19:03:52.975Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/67/2e/456460e5b35c4c99bce75d1b0b0f6993d220b1fefef939ecb4895f1a4713/qcdrivers-0.2.0-py3-none-any.whl", hash = "sha256:12666546222210efe0e2b5204301c45e15f2db27c6bb2c21e3c7c63e584d9357", size = 140845, upload-time = "2026-09-06T19:26:23.552Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/97/3d7a98fdfc791cebc4f8449d1039734c1a50610b069ca8f2a9e3088ca39c/qcdrivers-0.6.1-py3-none-any.whl", hash = "sha256:e10e0aca112f8a5f6788bda98ba6793bbbf901232a5a48aa6aedbe5a222212ee", size = 144434, upload-time = "2026-09-26T19:03:51.815Z" },
 ]
 
 [[package]]

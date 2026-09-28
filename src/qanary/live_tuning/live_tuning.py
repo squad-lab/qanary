@@ -114,20 +114,45 @@ class ControlMailbox:
 
         return self.snapshot()
 
-    def initialize(self) -> dict[str, Any]:
+    def initialize(
+        self,
+        values: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
-        Read initial parameter values.
+        Initialize the applied control state.
 
-        Call this before acquisition starts, while no measurement thread owns
-        the hardware yet.
+        If values are supplied, they are used directly. This allows
+        LiveTuning to use exactly the values stored in Snapshot Before
+        without reading the hardware a second time.
         """
-        values = {}
 
-        for name, parameter in self._parameters.items():
-            values[name] = parameter()
+        if values is None:
+            values = {}
+
+            for name, parameter in self._parameters.items():
+                values[name] = parameter()
+
+        else:
+            missing = (
+                set(self._parameters)
+                - set(values)
+            )
+
+            if missing:
+                raise ValueError(
+                    "Missing initial values for live tuning controls: "
+                    + ", ".join(
+                        sorted(missing)
+                    )
+                )
+
+            values = {
+                name: values[name]
+                for name in self._parameters
+            }
 
         with self._lock:
-            self._applied = values
+            self._applied = dict(values)
 
         return self.snapshot()
 
@@ -899,6 +924,16 @@ class LiveTuning:
         # snapshot handling
         self._snapshot_before = self._take_snapshot(phase="before")
 
+        control_start_values = (
+            self.widgets.load_start_snapshot(
+                self._snapshot_before
+            )
+        )
+
+        self.controls.initialize(
+            control_start_values
+        )
+
         template.attrs["Measurement Mode"] = "live_tuning"
         template.attrs["Live Tuning State"] = "running"
         template.attrs["Live Tuning Frames"] = 0
@@ -920,8 +955,6 @@ class LiveTuning:
             _sanitize_for_json(self._snapshot_before["sweeps"])
         )
         ###
-
-        self.controls.initialize()
 
         template.attrs.update(self._build_metadata())
         template.attrs["Live Tuning"] = "true"
