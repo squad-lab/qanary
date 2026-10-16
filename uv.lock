@@ -1613,7 +1613,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "ptyprocess" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -2178,7 +2178,7 @@ wheels = [
 
 [[package]]
 name = "qimchi-connect"
-version = "0.2.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -2186,9 +2186,9 @@ dependencies = [
     { name = "xarray" },
     { name = "zarr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/71/f7/e33a03f5911e51b5f5bca7b17e0cc93e8e82cb6377cd1f92a253a4040613/qimchi_connect-0.2.0.tar.gz", hash = "sha256:2c936b3a411c5e1af186f7dab5c8b5679a43241c0b7b0fc37011bb49ca8257ef", size = 238830, upload-time = "2026-09-06T19:28:53.395Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/51/66/259b5925cc0850b975eb283fa7cd417323e2dca2b4e9ab956d45d9bf1d54/qimchi_connect-0.3.1.tar.gz", hash = "sha256:9ad7e3308540acb68973cda0172aec9d690c6a119a8e32d327b9159ae450bd8a", size = 246126, upload-time = "2026-09-16T15:24:55.803Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/05/b210f394dd0b1e228d08beb528639e4665fab71012c5dd7dd31cf6206289/qimchi_connect-0.2.0-py3-none-any.whl", hash = "sha256:bf801bc7787fd1e8007b9b2b2db4b7ed1c520dcbff30cc48f1d6b618a7d9ced1", size = 43320, upload-time = "2026-09-06T19:28:51.898Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/2c/0826d19820f0b438b74a37b1fb03511f98a19c09d959aea8ef86af865fc5/qimchi_connect-0.3.1-py3-none-any.whl", hash = "sha256:42d61ba7d3fd7d32746cf5644039b0349d6c807bf7e7835da55c0da5fe15d2db", size = 47304, upload-time = "2026-09-16T15:24:54.588Z" },
 ]
 
 [[package]]
