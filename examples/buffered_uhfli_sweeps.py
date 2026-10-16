@@ -3,7 +3,7 @@
 import time
 
 from qcdrivers.buffered.zurich import NodeUHFLI
-from qcdrivers.squad.helpers.helpers import Lockin
+from qcdrivers.zurich import UHFLI
 from qcodes.instrument import Instrument
 
 from qanary import measure
@@ -14,10 +14,9 @@ from qanary.sweep import Sweep
 
 Instrument.close_all()
 
-lockin = Lockin(
+lockin = UHFLI(
     name="uhfli",
     address="localhost",
-    device="UHFLI",
     serial="DEV2793",
     demod_channels=[0, 1],
 )

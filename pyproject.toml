@@ -28,6 +28,9 @@ dependencies = [
   "setuptools>=78.1.0",
   "zarr==2.18.4",
   "numcodecs==0.15.0",
+  # xarray 2026.9 passes zarr_format, which Zarr 2.18 does not accept.
+  # TODO: Update the xarray and Zarr constraints together.
+  "xarray>=2025.1,<2026.9",
   "zhinst>=25.1.0",
   "zhinst-qcodes>=0.6.0",
   "pillow>=11.2.1",
@@ -36,7 +39,7 @@ dependencies = [
   "pyvisa-py>=0.7.2",
   "zeroconf>=0.147.2",
   "qimchi-connect>=0.2.0",
-  "qcdrivers>=0.2.0",
+  "qcdrivers>=0.6.1",
 ]
 
 [project.optional-dependencies]

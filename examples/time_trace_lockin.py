@@ -2,9 +2,10 @@
 
 import time
 
-from qcdrivers.buffered.squad import NodeDelay
+from qcdrivers.buffered.squad import NodeDummySweeper
 from qcdrivers.buffered.zurich import NodeMFLI, NodeUHFLI
-from qcdrivers.squad.helpers.helpers import Delay, Lockin
+from qcdrivers.squad.helpers.helpers import Delay
+from qcdrivers.zurich import MFLI, UHFLI
 from qcodes.instrument import Instrument
 
 from qanary import measure
@@ -17,14 +18,13 @@ Instrument.close_all()
 
 clock = Delay("delay_clock")
 
-lockin_RF = Lockin(
+lockin_RF = UHFLI(
     name="uhfli",
     address="localhost",
-    device="UHFLI",
     serial="DEV2793",
     demod_channels=[0],
 )
-lockin_DC = Lockin("lockin_DC", address="localhost", device="MFLI", serial="DEV7984")
+lockin_DC = MFLI("lockin_DC", address="localhost", serial="DEV7984")
 
 # %%
 
@@ -93,7 +93,7 @@ def UHFLI_time_trace_measurement(target_duration: float = 5, n_samples: int = 10
     )
 
     buffered_sweep = {
-        "instrument": NodeDelay(inst=clock),
+        "instrument": NodeDummySweeper(inst=clock),
         "sweeps": [time_sweep],
         "nodes": [
             {
@@ -155,7 +155,7 @@ def MFLI_time_trace_measurement(target_duration: float = 5, n_samples: int = 100
     )
 
     buffered_sweep = {
-        "instrument": NodeDelay(inst=clock),
+        "instrument": NodeDummySweeper(inst=clock),
         "sweeps": [time_sweep],
         "nodes": [
             {
