@@ -6,7 +6,7 @@ import numpy as np
 from qcdrivers.basel.dacs.dacs import BaselDac2
 from qcdrivers.buffered.basel import NodeBaselDAC
 from qcdrivers.buffered.zurich import NodeUHFLI
-from qcdrivers.squad.helpers.helpers import Lockin
+from qcdrivers.zurich import UHFLI
 from qcodes.instrument import Instrument
 from qcodes.parameters import Parameter
 
@@ -21,10 +21,9 @@ Instrument.close_all()
 dac = BaselDac2(
     "dac", "TCPIP0::192.168.0.108::23::SOCKET"
 )  # Connection issues: use "Restart Telnet now!" on device
-lockin = Lockin(
+lockin = UHFLI(
     name="uhfli",
     address="localhost",
-    device="UHFLI",
     serial="DEV2793",
     demod_channels=[0, 1],
 )

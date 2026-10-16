@@ -6,7 +6,7 @@ import numpy as np
 from qcdrivers.basel.dacs.dacs import BaselDac2
 from qcdrivers.buffered.basel import NodeBaselDAC
 from qcdrivers.buffered.zurich import NodeMFLI
-from qcdrivers.squad.helpers.helpers import Lockin
+from qcdrivers.zurich import MFLI
 from qcodes.instrument import Instrument
 from qcodes.parameters import Parameter
 
@@ -21,7 +21,7 @@ Instrument.close_all()
 dac = BaselDac2(
     "dac", "TCPIP0::192.168.0.108::23::SOCKET"
 )  # Connection issues: use "Restart Telnet now!" on device
-lockin = Lockin(name="mfli", address="localhost", serial="DEV7945")
+lockin = MFLI(name="mfli", address="localhost", serial="DEV7945")
 
 # %% setup DAC channels
 

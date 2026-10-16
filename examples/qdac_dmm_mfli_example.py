@@ -1,7 +1,7 @@
 # %%
 from qcdrivers.buffered.qdevil import NodeQDAC2
 from qcdrivers.buffered.zurich import NodeMFLI
-from qcdrivers.squad.helpers.helpers import Lockin
+from qcdrivers.zurich import MFLI
 from qcodes.instrument import Instrument
 from qcodes.instrument_drivers.mock_instruments import (
     DummyInstrument,
@@ -18,7 +18,7 @@ Instrument.close_all()
 # A dummy signal generator with two parameters ch1 and ch2
 dac_dummy = DummyInstrument("dac_dummy", gates=["ch1", "ch2"])
 dmm = DummyInstrumentWithMeasurement("dmm", setter_instr=dac_dummy)
-mfli1 = Lockin(name="mfli1", address="192.168.0.104", serial="DEV7128")
+mfli1 = MFLI(name="mfli1", address="192.168.0.104", serial="DEV7128")
 dac = QDac2("dac", "TCPIP0::qdevil_dac_1.lab.squad-lab.org::5025::SOCKET")
 
 # %%
