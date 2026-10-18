@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v0.12.2 (2026-10-18)
+
+### Bug Fixes
+
+- **deps**: Cap xarray below 2026.9 for Zarr 2 compatibility
+  ([`ff634fa`](https://gitlab.com/squad-lab/qanary/-/commit/ff634fa16d69a9878ea6d517e7242facd07bfbc5))
+
+- **examples**: Migrate to qcdrivers 0.6.1 APIs
+  ([`d46b9f4`](https://gitlab.com/squad-lab/qanary/-/commit/d46b9f4b7874eea7b90563c009746ba0e7dd3b32))
+
+### Chores
+
+- **deps**: Refresh remaining lockfile entries
+  ([`ddfbd25`](https://gitlab.com/squad-lab/qanary/-/commit/ddfbd25ac05f510813c3ec22af1c3feffb592e79))
+
+
 ## v0.12.1 (2026-09-24)
 
 
