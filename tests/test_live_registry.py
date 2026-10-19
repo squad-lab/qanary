@@ -1,7 +1,7 @@
 """
-Tests for qanary integration with the live registry.
+Tests for Qanary integration with the live registry.
 
-Qanary publishes a measurement by handing Qimchi Connect a snapshot callback
+Qanary publishes a measurement by handing Qimchi-Connect a snapshot callback
 that reads its in-memory Zarr store. These tests verify that a Qimchi client
 receives the published data and that the discovery row follows the measurement
 through its lifecycle.

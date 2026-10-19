@@ -1,5 +1,5 @@
 """
-Shared fixtures for the qanary test suite.
+Shared fixtures for the Qanary test suite.
 
 Nothing here talks to hardware. Where a test needs a real QCoDeS
 ``Parameter`` -- one with a unit, a label and a root instrument -- it gets a
@@ -175,7 +175,7 @@ def offline_live_server():
     Pretend the WebSocket server is already up.
 
     Publishing a measurement otherwise binds a port and starts a server
-    thread, which is Qimchi Connect's responsibility to test. Only the
+    thread, which is Qimchi-Connect's responsibility to test. Only the
     socket work is faked: the provider is really registered and the discovery
     row really written, so tests can assert on what was published.
 

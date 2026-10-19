@@ -16,7 +16,7 @@ the multiplicative ones combine them instead.
 import pytest
 from qcodes.parameters import Parameter
 
-# Importing qanary is what installs the operators; the import is the fixture.
+# Importing Qanary is what installs the operators; the import is the fixture.
 import qanary  # noqa: F401
 
 

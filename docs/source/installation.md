@@ -18,7 +18,7 @@ with `qanary`, change imports from `qcutils...` to `qanary...`, and rename
 changed from `~/.qcutils` to `~/.qanary`.
 
 Qanary pulls in its QCoDeS, Zurich Instruments, live-visualization
-([`qimchi-connect`](https://gitlab.com/squad-lab/qimchi-connect)) and instrument
+([`Qimchi-Connect`](https://gitlab.com/squad-lab/qimchi-connect)) and instrument
 driver ([`qcdrivers`](https://gitlab.com/squad-lab/qcdrivers)) dependencies, so
 there is no need to add them separately.
 

@@ -91,7 +91,7 @@ For complete measurement scripts, see the [examples](https://gitlab.com/squad-la
 `qanary` uses a split data path:
 
 - Live visualization: in-memory Zarr snapshots published through
-  [`qimchi-connect`](https://gitlab.com/squad-lab/qimchi-connect), with a
+  [Qimchi-Connect](https://gitlab.com/squad-lab/qimchi-connect), with a
   temporary disk checkpoint for recovery
 - Completed measurement: a netCDF (`.nc`) file in the configured data directory
 

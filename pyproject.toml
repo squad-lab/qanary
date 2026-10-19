@@ -82,7 +82,7 @@ package = true
 [tool.uv.sources]
 qanary = { workspace = true }
 
-# Hatchling, like qimchi-connect and qcdrivers. poetry-core collapses
+# Hatchling, like Qimchi-Connect and qcdrivers. poetry-core collapses
 # `authors` to the first entry, so everyone but the first author disappears
 # from the published metadata.
 [build-system]
