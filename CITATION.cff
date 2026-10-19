@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "Please cite Qanary using the metadata below."
+type: software
+title: "Qanary: Sweep and measurement utilities for QCoDeS"
+abstract: >-
+  Qanary runs parameter sweeps and records measurements with QCoDeS
+  instruments, storing each measurement as an xarray dataset with its
+  metadata. It can stream running measurements to Qimchi for live plotting.
+authors:
+  - given-names: Spandan
+    family-names: Anupam
+    affiliation: Forschungszentrum Jülich GmbH
+    orcid: "https://orcid.org/0000-0003-4996-3265"
+  - given-names: Simon
+    family-names: Schreibing
+    affiliation: Forschungszentrum Jülich GmbH
+    orcid: "https://orcid.org/0009-0008-9815-2876"
+  - given-names: Jyotirmaya
+    family-names: Shivottam
+    affiliation: Forschungszentrum Jülich GmbH
+    orcid: "https://orcid.org/0000-0002-2688-9421"
+repository-code: "https://gitlab.com/squad-lab/qanary"
+url: "https://qanary.squad-lab.org"
+license: AGPL-3.0-or-later
+# Set by semantic-release on every release.
+version: 0.12.2
+keywords:
+  - QCoDeS
+  - measurement
+  - sweep
+  - xarray
+  - quantum measurements

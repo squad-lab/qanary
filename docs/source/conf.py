@@ -11,8 +11,8 @@ import importlib.metadata
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "Qanary"
-copyright = "2024-%Y, Spandan Anupam, Jyotirmaya Shivottam"
-author = "Spandan Anupam, Jyotirmaya Shivottam"
+copyright = "2024-%Y, Forschungszentrum Jülich GmbH, PGI-11"
+author = "Spandan Anupam, Simon Schreibing, Jyotirmaya Shivottam"
 
 # Read the version from installed package metadata instead of pinning a
 # literal, so a bump in pyproject.toml never has to be repeated here.

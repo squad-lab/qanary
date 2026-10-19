@@ -112,8 +112,31 @@ uv sync --extra dev
 uv run pre-commit install
 ```
 
+## Citing Qanary
+
+Please cite Qanary when using it in your work:
+
+```bibtex
+@misc{qanary,
+  author       = {Anupam, Spandan and Schreibing, Simon and Shivottam, Jyotirmaya},
+  title        = {Qanary: Sweep and measurement utilities for QCoDeS},
+  year         = {2026},
+  note         = {Version 0.12.2, software},
+  howpublished = {GitLab},
+  url          = {https://gitlab.com/squad-lab/qanary}
+}
+```
+
+[CITATION.cff](CITATION.cff) has the same information in machine-readable form.
+
 ## Authors
 
 - Spandan Anupam: [s.anupam@fz-juelich.de](mailto:s.anupam@fz-juelich.de)
 - Simon Schreibing: [s.schreibing@fz-juelich.de](mailto:s.schreibing@fz-juelich.de)
 - Jyotirmaya Shivottam: [shivottam@proton.me](mailto:shivottam@proton.me)
+
+## License
+
+Qanary is free software under the [AGPL-3.0-or-later](LICENSE). Dependencies are installed separately under their own licenses.
+
+Copyright © 2024–2026 Forschungszentrum Jülich GmbH, PGI-11.
