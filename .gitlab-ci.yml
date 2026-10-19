@@ -72,6 +72,12 @@ lint:
     - ruff check .
     - ruff format --check .
 
+citation:
+  stage: test
+  script:
+    - pip install --quiet cffconvert==2.0.0
+    - cffconvert --validate
+
 pytest:
   stage: test
   # Python 3.13 is the supported runtime for this release.
@@ -209,6 +215,31 @@ gitlab_release:
         --name "Release $RELEASE_TAG" \
         --notes-file CHANGELOG.md \
         --ref "$RELEASE_TAG"
+
+# Archive releases on Zenodo using the tagged CITATION.cff.
+# Skip this job when ZENODO_SPANDAN is unset.
+zenodo:
+  stage: release
+  needs:
+    - job: semantic_release
+      artifacts: true
+    - job: gitlab_release
+      artifacts: false
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $ZENODO_SPANDAN
+  script:
+    - |
+      if [ "$RELEASE_CREATED" != "true" ]; then
+        echo "semantic-release did not cut a version; nothing to archive."
+        exit 0
+      fi
+      # Fetch the release tag created after this pipeline checked out the source.
+      git fetch --tags origin
+      ARCHIVE="qanary-$RELEASE_TAG.zip"
+      git archive --format=zip --prefix="qanary-${RELEASE_TAG#v}/" -o "$ARCHIVE" "$RELEASE_TAG"
+      git show "$RELEASE_TAG:CITATION.cff" > release.cff
+      pip install --quiet pyyaml
+      ZENODO_TOKEN="$ZENODO_SPANDAN" python scripts/zenodo_release.py --tag "$RELEASE_TAG" --cff release.cff --file "$ARCHIVE"
 
 pypi:
   stage: release
