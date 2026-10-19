@@ -74,6 +74,8 @@ docs = [
     "furo>=2024.8",
     "sphinx-copybutton>=0.5",
     "sphinx-design>=0.6",
+    "sphinx-sitemap>=2.6",
+    "sphinxext-opengraph>=0.10",
 ]
 
 [tool.uv]

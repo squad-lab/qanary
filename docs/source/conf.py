@@ -6,6 +6,10 @@
 # Adapted from the Qimchi documentation configuration.
 
 import importlib.metadata
+import json
+from pathlib import Path
+
+import yaml
 
 # ----- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -42,6 +46,8 @@ extensions = [
     "myst_parser",  # Support for Markdown files in the documentation
     "sphinx_copybutton",  # Copy button on code blocks
     "sphinx_design",  # Cards, tabs and grids in MyST
+    "sphinx_sitemap",  # sitemap.xml for search engines
+    "sphinxext.opengraph",  # Meta description and link-preview tags
 ]
 
 templates_path = ["_templates"]  # Path to templates used for HTML output
@@ -51,6 +57,7 @@ exclude_patterns = [
     ".DS_Store",
 ]  # Patterns to exclude from the build
 html_static_path = ["_static"]  # Path to static files used for HTML output
+html_extra_path = ["_extra"]  # robots.txt and llms.txt, copied to the site root
 
 # ----- Options for Theme customization -----------------------------------------
 
@@ -59,6 +66,68 @@ html_title = "Qanary"
 # Canonical host for the published docs, so pages served from the GitLab Pages
 # URL point search engines at the custom domain.
 html_baseurl = "https://qanary.squad-lab.org/"
+
+# ----- Search engines and link previews ----------------------------------------
+
+sitemap_url_scheme = "{link}"
+sitemap_excludes = ["search.html", "genindex.html", "py-modindex.html"]
+
+ogp_site_url = html_baseurl
+ogp_site_name = "Qanary"
+ogp_image = "https://qanary.squad-lab.org/_static/assets/qanary-logo.png"
+ogp_image_alt = "Qanary logo"
+ogp_social_cards = {"enable": False}
+
+
+def _structured_data() -> str:
+    """Return home page JSON-LD using metadata from CITATION.cff."""
+    cff = yaml.safe_load(
+        (Path(__file__).parents[2] / "CITATION.cff").read_text(encoding="utf-8")
+    )
+    authors = [
+        {
+            "@type": "Person",
+            "name": f"{a['given-names']} {a['family-names']}",
+            **({"@id": a["orcid"], "sameAs": a["orcid"]} if a.get("orcid") else {}),
+            **(
+                {"affiliation": {"@type": "Organization", "name": a["affiliation"]}}
+                if a.get("affiliation")
+                else {}
+            ),
+        }
+        for a in cff["authors"]
+    ]
+    data = {
+        "@context": "https://schema.org",
+        "@type": "SoftwareSourceCode",
+        "name": "Qanary",
+        "alternateName": cff["title"],
+        "description": " ".join(cff["abstract"].split()),
+        "url": html_baseurl,
+        "codeRepository": cff["repository-code"],
+        "programmingLanguage": "Python",
+        "runtimePlatform": "Python 3.13",
+        "license": "https://spdx.org/licenses/AGPL-3.0-or-later.html",
+        "version": release,
+        "keywords": cff.get("keywords", []),
+        "author": authors,
+        "publisher": {
+            "@type": "Organization",
+            "name": "SQUAD Lab (FZJ)",
+            "url": "https://squad-lab.org/",
+            "parentOrganization": {
+                "@type": "Organization",
+                "name": "Forschungszentrum Jülich GmbH",
+                "url": "https://www.fz-juelich.de/",
+            },
+        },
+    }
+    if cff.get("doi"):
+        data["identifier"] = f"https://doi.org/{cff['doi']}"
+    return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
+
+html_context = {"qanary_structured_data": _structured_data()}
 # The project avatar, with its white background flood-filled to transparent so
 # it does not sit in a white box against Furo's dark sidebar, and trimmed to its
 # content so it fills the sidebar slot.
