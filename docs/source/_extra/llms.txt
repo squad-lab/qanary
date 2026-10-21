@@ -1,0 +1,37 @@
+# Qanary
+
+> Qanary is a free, open-source Python package for running parameter sweeps
+> and recording measurements with QCoDeS instruments. Measurements are stored
+> as xarray datasets with metadata and can be plotted live in Qimchi.
+
+Qanary is developed by SQUAD Lab at Forschungszentrum Jülich (PGI-11) and is
+licensed under the AGPL-3.0-or-later. It requires Python 3.13 and is installed
+from PyPI (`uv add qanary`).
+
+## Authors
+
+In citation order, as in Qanary's CITATION.cff:
+
+- [Spandan Anupam](https://orcid.org/0000-0003-4996-3265): Forschungszentrum Jülich, ORCID 0000-0003-4996-3265
+- [Simon Schreibing](https://orcid.org/0009-0008-9815-2876): Forschungszentrum Jülich, ORCID 0009-0008-9815-2876
+- [Jyotirmaya Shivottam](https://orcid.org/0000-0002-2688-9421): Forschungszentrum Jülich, ORCID 0000-0002-2688-9421
+
+## Documentation
+
+- [Overview](https://qanary.squad-lab.org/index.html): Features and usage
+- [Installation](https://qanary.squad-lab.org/installation.html): Installing Qanary and preparing a measurement project
+- [API reference](https://qanary.squad-lab.org/api/index.html): Modules, classes and functions
+- [Changelog](https://qanary.squad-lab.org/changelog.html): What changed in each release
+
+## Project
+
+- [Source code](https://gitlab.com/squad-lab/qanary): Repository, examples and issue tracker
+- [PyPI](https://pypi.org/project/qanary/): Released packages
+- [CITATION.cff](https://gitlab.com/squad-lab/qanary/-/blob/main/CITATION.cff): How to cite Qanary
+
+## Related
+
+- [Qimchi](https://qimchi.squad-lab.org/): Plotting and analysis software for the measurements Qanary records, including live plotting
+- [Qimchi-Connect](https://gitlab.com/squad-lab/qimchi-connect): The library Qanary uses to publish running measurements to Qimchi
+- [QCoDeS](https://microsoft.github.io/Qcodes/): The instrument framework Qanary builds on
+- [xarray](https://docs.xarray.dev/): The data model of Qanary's datasets

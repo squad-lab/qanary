@@ -11,7 +11,7 @@ ones.
 
 The tests run real measurements against ``DummyInstrument``. Only three things
 are faked: the package freeze (a subprocess call worth seconds per run), the
-WebSocket server (Qimchi Connect's concern) and, where a test says so, the
+WebSocket server (Qimchi-Connect's concern) and, where a test says so, the
 GitLab hash push.
 
 """
@@ -204,7 +204,7 @@ class TestLiveStoreRegistry:
         ):
             _register_memory_store("1-unmaintained", zarr.MemoryStore())
 
-        # Registry maintenance and its warning belong to Qimchi Connect.
+        # Registry maintenance and its warning belong to Qimchi-Connect.
         assert "Could not maintain the live registry" in caplog.text
         assert live_server._provider_entry("1-unmaintained") is not None
 
@@ -241,7 +241,7 @@ class TestLiveStoreRegistry:
     ):
         """
         Live plotting is optional, so failure to start the server must not stop
-        the measurement. Qimchi Connect removes the unused provider and writes
+        the measurement. Qimchi-Connect removes the unused provider and writes
         no discovery row; the Qanary wrapper reports the failure as port zero.
 
         """
@@ -737,7 +737,7 @@ class TestFinalizeDiskArtifacts:
         quiet_registry_maintenance,
     ):
         """
-        Qimchi Connect can record a measurement without a disk path, so Qanary
+        Qimchi-Connect can record a measurement without a disk path, so Qanary
         must guarantee its own runs have one. The run seeds a ``.zarr`` store
         before publishing and advertises that path.
 

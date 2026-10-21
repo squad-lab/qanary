@@ -1,0 +1,7 @@
+{% extends "!page.html" %}
+{% block extrahead %}
+{{ super() }}
+{%- if pagename == master_doc and qanary_structured_data %}
+<script type="application/ld+json">{{ qanary_structured_data }}</script>
+{%- endif %}
+{% endblock %}

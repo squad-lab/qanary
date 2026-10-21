@@ -4,7 +4,7 @@ Tests for ``qanary.logger``.
 Logging is configured as a side effect of importing the package, which means
 it is configured exactly once and every later ``get_logger`` call has to be
 cheap and idempotent. The module also quietens the ``websockets`` logger used
-by Qimchi Connect, which would otherwise print connection messages in the
+by Qimchi-Connect, which would otherwise print connection messages in the
 middle of a measurement's progress bar. The configured flag is process-global,
 so each test that changes it restores it afterwards.
 
@@ -93,7 +93,7 @@ def test_reconfiguring_only_adjusts_the_level():
 
 def test_the_websockets_logger_is_quietened(unconfigured):
     """
-    Qimchi Connect's WebSocket transport logs connections at INFO, which would
+    Qimchi-Connect's WebSocket transport logs connections at INFO, which would
     scroll the measurement progress bar off the screen.
 
     """

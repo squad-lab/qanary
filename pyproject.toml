@@ -74,6 +74,8 @@ docs = [
     "furo>=2024.8",
     "sphinx-copybutton>=0.5",
     "sphinx-design>=0.6",
+    "sphinx-sitemap>=2.6",
+    "sphinxext-opengraph>=0.10",
 ]
 
 [tool.uv]
@@ -82,7 +84,7 @@ package = true
 [tool.uv.sources]
 qanary = { workspace = true }
 
-# Hatchling, like qimchi-connect and qcdrivers. poetry-core collapses
+# Hatchling, like Qimchi-Connect and qcdrivers. poetry-core collapses
 # `authors` to the first entry, so everyone but the first author disappears
 # from the published metadata.
 [build-system]
@@ -98,7 +100,9 @@ packages = ["src/qanary"]
 version_toml = ["pyproject.toml:project.version"]
 commit_message = "chore(release): v{version}\n\n[skip ci]"
 commit_author = "Janitor <squad@fz-juelich.de>"
-build_command = "uv build"
+# Update CITATION.cff and the README citation; include both in the release commit.
+build_command = "bash scripts/sync_release_metadata.sh && uv build"
+assets = ["CITATION.cff", "README.md"]
 tag_format = "v{version}"
 # Keep pre-1.0 breaking changes on the minor line: v0.9.0 becomes v0.10.0.
 major_on_zero = false

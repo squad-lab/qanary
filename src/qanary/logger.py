@@ -1,5 +1,5 @@
 """
-Centralized logging configuration for qanary.
+Centralized logging configuration for Qanary.
 
 """
 
@@ -27,7 +27,7 @@ def _setup_logging(
     use_detailed_format: bool = False,
 ) -> None:
     """
-    Configure logging for qanary.
+    Configure logging for Qanary.
 
     Args:
         level: Logging level (e.g., logging.INFO, logging.DEBUG)
@@ -44,7 +44,7 @@ def _setup_logging(
     if format_string is None:
         format_string = DETAILED_FORMAT if use_detailed_format else DEFAULT_FORMAT
 
-    # Configure root logger for qanary
+    # Configure root logger for Qanary
     logging.basicConfig(
         format=format_string,
         level=level,
@@ -63,7 +63,7 @@ def _setup_logging(
 
 def get_logger(name: str) -> logging.Logger:
     """
-    Get a logger instance for a qanary module.
+    Get a logger instance for a Qanary module.
 
     Args:
         name: Logger name (typically __name__ from the calling module)

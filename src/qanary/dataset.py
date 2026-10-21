@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 # Custom exceptions
 class QanaryDatasetError(Exception):
-    """Base class for all dataset-related errors in qanary."""
+    """Base class for all dataset-related errors in Qanary."""
 
 
 class DatasetNotFoundError(QanaryDatasetError):
@@ -48,7 +48,7 @@ class DatasetConvertError(QanaryDatasetError):
 # Public helpers
 def load(path: Union[str, Path]) -> xr.Dataset:
     """
-    Load a qanary measurement dataset.
+    Load a Qanary measurement dataset.
 
     Wraps :func:`xarray.load_dataset` with engine selection appropriate for
     Qanary-generated files (automatic selection for ``.nc`` and the Zarr

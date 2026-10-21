@@ -10,7 +10,7 @@ which makes it noise that people learn to ignore.
 The property that matters: growing the dataset must not grow the cost of one
 checkpoint. Both stores are covered.
 
-  - the in-memory store, which Qimchi Connect snapshots, is written by region
+  - the in-memory store, which Qimchi-Connect snapshots, is written by region
   - the on-disk store is written key by key, skipping unchanged keys
 
 Measured on the reference machine before these were added, at 12 M points

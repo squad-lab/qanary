@@ -239,7 +239,7 @@ def _find_available_port(start_port: int, max_attempts: int = 100) -> int:
 
 def _unregister_memory_store(measurement_id: str) -> None:
     """
-    Stop publishing a live measurement through Qimchi Connect.
+    Stop publishing a live measurement through Qimchi-Connect.
 
     Closing the publication also removes its snapshot provider and marks its
     discovery record as ended. Failures are logged so measurement finalisation
@@ -800,7 +800,7 @@ class Measurement:
         dataset and then the disk checkpoint. Export uses a temporary file and
         atomic replacement. If that fails, the live Zarr store is moved beside
         the intended target and converted there. Successful export updates the
-        path advertised by Qimchi Connect before removing the live store and its
+        path advertised by Qimchi-Connect before removing the live store and its
         recovery marker.
 
         Args:

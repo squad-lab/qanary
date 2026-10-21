@@ -1,5 +1,8 @@
 ---
 title: Qanary
+myst:
+  html_meta:
+    description: "Qanary is an open-source Python package for parameter sweeps and measurements with QCoDeS instruments. It stores each measurement as an xarray dataset and plots it live in Qimchi."
 ---
 # Measurement Utilities for QCoDeS
 
@@ -24,7 +27,7 @@ nested loop with save logic threaded through it.
 - **Buffered acquisition**: hand a block of points to the instrument and read it
   back in one go, instead of a round trip per point. Much faster, where supported.
 - **Live visualization**: Qanary publishes each measurement to Qimchi as it
-  runs through [`qimchi-connect`](https://gitlab.com/squad-lab/qimchi-connect).
+  runs through [`Qimchi-Connect`](https://gitlab.com/squad-lab/qimchi-connect).
   Other measurement libraries and custom acquisition scripts can use its
   `live_measurement` context manager to publish their own live data.
 - **xarray datasets**: completed measurements are stored as netCDF files and

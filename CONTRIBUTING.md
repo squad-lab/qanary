@@ -57,6 +57,14 @@ Each of these is set out in full, with the reasoning and the worked examples, on
 the [Development](https://qanary.squad-lab.org/development.html) page. Read it
 before your first substantial change.
 
+## Test strategy
+
+The pytest suite in `tests/` covers sweeps, parameters, measurements, data storage, checkpoints, logging and the live registry. CI tests Linux and Windows to cover differences in Zarr storage and file locking. Both must pass before merging. Every pipeline reports coverage.
+
+Tests use dummy instruments because CI has no measurement hardware. The examples require real instruments, so `tests/test_examples.py` checks their syntax and imports without running them.
+
+Include a regression test with each bug fix and tests for each new feature.
+
 ## Issues
 
 Report bugs and propose changes through the
