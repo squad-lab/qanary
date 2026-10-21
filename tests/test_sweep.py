@@ -12,6 +12,7 @@ parameters to zero.
 
 """
 
+import threading
 from time import monotonic
 from types import SimpleNamespace
 
@@ -363,16 +364,17 @@ class TestSweeper:
 
     def test_parallel_sweeps_still_reach_their_endpoints(self, gates):
         """
-        The parallel path hands each parameter to its own thread. The threads
-        are not joined, so the assertion polls rather than reading once.
+        The parallel path hands each parameter to its own thread and does not
+        join them, so the test joins them itself. Polling instead is racy: a
+        QCoDeS get writes the value it read back into the cache, so a read
+        overlapping the final set can leave a stale value behind.
 
         """
+        before = set(threading.enumerate())
         sweeper([Sweep([gates.x, gates.y], 0.0, 1.0, num=20)], parallel=True)
+        for thread in set(threading.enumerate()) - before:
+            thread.join(timeout=5.0)
 
-        deadline = monotonic() + 5.0
-        while monotonic() < deadline:
-            if gates.x() == pytest.approx(1.0) and gates.y() == pytest.approx(1.0):
-                break
         assert gates.x() == pytest.approx(1.0)
         assert gates.y() == pytest.approx(1.0)
 
