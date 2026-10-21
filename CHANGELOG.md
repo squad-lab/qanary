@@ -2,6 +2,43 @@
 
 <!-- version list -->
 
+## v0.12.3 (2026-10-21)
+
+### Bug Fixes
+
+- **metadata**: Publish citation and author metadata
+  ([`7bb50cf`](https://gitlab.com/squad-lab/qanary/-/commit/7bb50cf464e2e8c4fda4c115d99e94db6ca0b03b))
+
+### Chores
+
+- **metadata**: Add citation and ownership information
+  ([`c039b1f`](https://gitlab.com/squad-lab/qanary/-/commit/c039b1f6e461efa32de0df522928a0ff54d9643a))
+
+### Continuous Integration
+
+- Keep the Zenodo token on the Zenodo host
+  ([`973bba2`](https://gitlab.com/squad-lab/qanary/-/commit/973bba280d77e388f45bfcc6252172a2164fc8ed))
+
+- Synchronize citations and archive releases on Zenodo
+  ([`f7ce2a4`](https://gitlab.com/squad-lab/qanary/-/commit/f7ce2a430ebf2b1a22ee0b2c520e18d99fb4d1e6))
+
+### Documentation
+
+- Add search metadata and crawler discovery
+  ([`6658a81`](https://gitlab.com/squad-lab/qanary/-/commit/6658a817c87e02b11a662a474c66dee191904c68))
+
+- Align project naming and contributor guidance
+  ([`daa0d99`](https://gitlab.com/squad-lab/qanary/-/commit/daa0d992b730dde2d04d1f8d432a0316b9d27371))
+
+- Declare crawler content signals
+  ([`97c512d`](https://gitlab.com/squad-lab/qanary/-/commit/97c512db6d3082bd02852b69962050f1d5895615))
+
+### Testing
+
+- **sweep**: Join parallel sweep threads instead of polling
+  ([`c2e2313`](https://gitlab.com/squad-lab/qanary/-/commit/c2e23131ac5785e6543515b52eede9cd13e535a0))
+
+
 ## v0.12.2 (2026-10-18)
 
 ### Bug Fixes

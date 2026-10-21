@@ -23,7 +23,7 @@ repository-code: "https://gitlab.com/squad-lab/qanary"
 url: "https://qanary.squad-lab.org"
 license: AGPL-3.0-or-later
 # Set by semantic-release on every release.
-version: 0.12.2
+version: 0.12.3
 keywords:
   - QCoDeS
   - measurement

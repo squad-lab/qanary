@@ -121,7 +121,7 @@ Please cite Qanary when using it in your work:
   author       = {Anupam, Spandan and Schreibing, Simon and Shivottam, Jyotirmaya},
   title        = {Qanary: Sweep and measurement utilities for QCoDeS},
   year         = {2026},
-  note         = {Version 0.12.2, software},
+  note         = {Version 0.12.3, software},
   howpublished = {GitLab},
   url          = {https://gitlab.com/squad-lab/qanary}
 }
