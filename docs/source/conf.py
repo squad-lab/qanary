@@ -16,7 +16,7 @@ import yaml
 
 project = "Qanary"
 copyright = "2024-%Y, Forschungszentrum Jülich GmbH, PGI-11"
-author = "Spandan Anupam, Simon Schreibing, Jyotirmaya Shivottam"
+author = "Spandan Anupam, Simon Schreibing, Jyotirmaya Shivottam, Vincent Mourik"
 
 # Read the version from installed package metadata instead of pinning a
 # literal, so a bump in pyproject.toml never has to be repeated here.
@@ -77,6 +77,9 @@ ogp_site_name = "Qanary"
 ogp_image = "https://qanary.squad-lab.org/_static/assets/qanary-logo.png"
 ogp_image_alt = "Qanary logo"
 ogp_social_cards = {"enable": False}
+# Limit generated descriptions to 155 characters.
+# Keep explicit page descriptions unchanged.
+ogp_description_length = 155
 
 
 def _structured_data() -> str:

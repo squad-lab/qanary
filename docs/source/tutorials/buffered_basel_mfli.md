@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "The Basel DAC drives a buffered Qanary sweep. Its synchronization output triggers a Zurich Instruments MFLI lock-in."
+og:description: "The Basel DAC drives a buffered Qanary sweep. Its synchronization output triggers a Zurich Instruments MFLI lock-in."
+---
 # Acquire a Basel DAC sweep with an MFLI
 
 In this measurement, the Basel DAC generates the sweep and its synchronization

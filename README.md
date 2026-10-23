@@ -5,6 +5,7 @@
 [![coverage](https://gitlab.com/squad-lab/qanary/badges/main/coverage.svg?key_text=coverage&key_width=64)](https://gitlab.com/squad-lab/qanary/-/jobs)
 [![latest release](https://gitlab.com/squad-lab/qanary/-/badges/release.svg?key_text=release&key_width=54)](https://gitlab.com/squad-lab/qanary/-/releases)
 [![PyPI version](https://img.shields.io/pypi/v/qanary.svg)](https://pypi.org/project/qanary/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23536660.svg)](https://doi.org/10.5281/zenodo.23536660)
 [![documentation](https://img.shields.io/badge/docs-qanary.squad--lab.org-blue.svg)](https://qanary.squad-lab.org/)
 
 Qanary simplifies measurement workflows and replaces QCoDeS for handling measurements.
@@ -118,15 +119,18 @@ Please cite Qanary when using it in your work:
 
 ```bibtex
 @misc{qanary,
-  author       = {Anupam, Spandan and Schreibing, Simon and Shivottam, Jyotirmaya},
+  author       = {Anupam, Spandan and Schreibing, Simon and Shivottam, Jyotirmaya and Mourik, Vincent},
   title        = {Qanary: Sweep and measurement utilities for QCoDeS},
   year         = {2026},
   note         = {Version 0.12.3, software},
-  howpublished = {GitLab},
-  url          = {https://gitlab.com/squad-lab/qanary}
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.23536660},
+  url          = {https://doi.org/10.5281/zenodo.23536660}
 }
 ```
 
+This DOI covers all archived releases. To cite a specific version, use its DOI from the
+[Zenodo record](https://doi.org/10.5281/zenodo.23536660).
 [CITATION.cff](CITATION.cff) has the same information in machine-readable form.
 
 ## Authors
@@ -134,6 +138,7 @@ Please cite Qanary when using it in your work:
 - Spandan Anupam: [s.anupam@fz-juelich.de](mailto:s.anupam@fz-juelich.de)
 - Simon Schreibing: [s.schreibing@fz-juelich.de](mailto:s.schreibing@fz-juelich.de)
 - Jyotirmaya Shivottam: [shivottam@proton.me](mailto:shivottam@proton.me)
+- Vincent Mourik: [v.mourik@fz-juelich.de](mailto:v.mourik@fz-juelich.de)
 
 ## License
 

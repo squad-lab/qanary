@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Record buffered lock-in time traces in Qanary. Use NodeDelay as the root node. Derive the point delay from the actual sample rate."
+og:description: "Record buffered lock-in time traces in Qanary. Use NodeDelay as the root node. Derive the point delay from the actual sample rate."
+---
 # Record buffered time traces
 
 A time trace has no physical sweep generator, but it still needs a root node to

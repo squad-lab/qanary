@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Qanary development: clone setup, checks and coding conventions for src/qanary."
+og:description: "Qanary development: clone setup, checks and coding conventions for src/qanary."
+---
 # Development
 
 This page defines the conventions for contributing Python code to Qanary. The

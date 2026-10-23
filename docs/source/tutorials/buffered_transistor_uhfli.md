@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Sweep a transistor gate with the Basel DAC. Use Qanary to record two UHFLI demodulator signals in stepped or hardware-timed buffered sweeps."
+og:description: "Sweep a transistor gate with the Basel DAC. Use Qanary to record two UHFLI demodulator signals in stepped or hardware-timed buffered sweeps."
+---
 # Tune a transistor sweep with a UHFLI
 
 This example sweeps a transistor gate with the Basel DAC and acquires amplitude

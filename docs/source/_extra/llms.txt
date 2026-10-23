@@ -15,6 +15,7 @@ In citation order, as in Qanary's CITATION.cff:
 - [Spandan Anupam](https://orcid.org/0000-0003-4996-3265): Forschungszentrum Jülich, ORCID 0000-0003-4996-3265
 - [Simon Schreibing](https://orcid.org/0009-0008-9815-2876): Forschungszentrum Jülich, ORCID 0009-0008-9815-2876
 - [Jyotirmaya Shivottam](https://orcid.org/0000-0002-2688-9421): Forschungszentrum Jülich, ORCID 0000-0002-2688-9421
+- [Vincent Mourik](https://orcid.org/0000-0003-1522-7403): Forschungszentrum Jülich, ORCID 0000-0003-1522-7403
 
 ## Documentation
 
@@ -28,6 +29,7 @@ In citation order, as in Qanary's CITATION.cff:
 - [Source code](https://gitlab.com/squad-lab/qanary): Repository, examples and issue tracker
 - [PyPI](https://pypi.org/project/qanary/): Released packages
 - [CITATION.cff](https://gitlab.com/squad-lab/qanary/-/blob/main/CITATION.cff): How to cite Qanary
+- [Zenodo DOI](https://doi.org/10.5281/zenodo.23536660): Archived releases and version DOIs
 
 ## Related
 

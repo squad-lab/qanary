@@ -1,3 +1,10 @@
+---
+myst:
+  html_meta:
+    description: "Map a sweep coordinate to several physical gates with Qanary's VirtualGate, for example to compensate cross-capacitance. The example runs without hardware."
+og:description: "Map a sweep coordinate to several physical gates with Qanary's VirtualGate, for example to compensate cross-capacitance. The example runs without hardware."
+---
+
 # Virtual gates
 
 A `VirtualGate` maps one sweep coordinate onto several physical gates. Use it

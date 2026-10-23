@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Sweep a transistor gate with the Basel DAC and record MFLI amplitude and phase in Qanary. Compare stepped and hardware-timed buffered sweeps."
+og:description: "Sweep a transistor gate with the Basel DAC and record MFLI amplitude and phase in Qanary. Compare stepped and hardware-timed buffered sweeps."
+---
 # Tune a transistor sweep with an MFLI
 
 This example sweeps one Basel DAC channel across a transistor gate and records

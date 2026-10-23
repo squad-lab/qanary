@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "A buffered two-dimensional QDAC-II sweep in Qanary, with the QDAC-II triggering two Keysight 34461A multimeters."
+og:description: "A buffered two-dimensional QDAC-II sweep in Qanary, with the QDAC-II triggering two Keysight 34461A multimeters."
+---
 # Acquire a QDAC-II sweep with Keysight DMMs
 
 This example programs a two-dimensional QDAC-II sweep and records two voltage

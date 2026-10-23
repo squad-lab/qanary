@@ -1,3 +1,8 @@
+:og:description: API reference for Qanary: measurements, sweeps, parameters, datasets and buffered sweeps.
+
+.. meta::
+   :description: API reference for Qanary: measurements, sweeps, parameters, datasets and buffered sweeps.
+
 .. _API:
 
 API
