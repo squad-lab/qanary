@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run a hardware-timed Qanary sweep with the Basel LNHR DAC's internal AWGs and a single-node sweep tree."
+og:description: "Run a hardware-timed Qanary sweep with the Basel LNHR DAC's internal AWGs and a single-node sweep tree."
+---
 # Run a buffered sweep with the Basel DAC
 
 The Basel LNHR DAC can play a sweep from its internal AWGs. Once programmed,

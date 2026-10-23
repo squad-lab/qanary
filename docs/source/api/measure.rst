@@ -1,3 +1,8 @@
+:og:description: API reference for qanary.measure: run a sweep, save the measurement and register it for live plotting in Qimchi.
+
+.. meta::
+   :description: API reference for qanary.measure: run a sweep, save the measurement and register it for live plotting in Qimchi.
+
 Measure
 =======
 

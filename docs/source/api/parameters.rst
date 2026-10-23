@@ -1,3 +1,8 @@
+:og:description: API reference for qanary.parameters: station aliases, virtual gates, multi-channel parameters and arithmetic on QCoDeS parameters.
+
+.. meta::
+   :description: API reference for qanary.parameters: station aliases, virtual gates, multi-channel parameters and arithmetic on QCoDeS parameters.
+
 Parameters
 ==========
 

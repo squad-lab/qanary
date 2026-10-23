@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Tutorials built on Qanary's example scripts: combined and virtual gate parameters, and buffered sweeps with DACs, lock-ins and multimeters."
+og:description: "Tutorials built on Qanary's example scripts: combined and virtual gate parameters, and buffered sweeps with DACs, lock-ins and multimeters."
+---
 # Tutorials
 
 These tutorials introduce Qanary through the [example

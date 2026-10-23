@@ -77,6 +77,9 @@ ogp_site_name = "Qanary"
 ogp_image = "https://qanary.squad-lab.org/_static/assets/qanary-logo.png"
 ogp_image_alt = "Qanary logo"
 ogp_social_cards = {"enable": False}
+# Limit generated descriptions to 155 characters.
+# Keep explicit page descriptions unchanged.
+ogp_description_length = 155
 
 
 def _structured_data() -> str:

@@ -1,3 +1,8 @@
+:og:description: Qanary buffered sweeps: hardware acquisition of point blocks and the sweep-tree contract for QCDrivers nodes.
+
+.. meta::
+   :description: Qanary buffered sweeps: hardware acquisition of point blocks and the sweep-tree contract for QCDrivers nodes.
+
 Buffered
 ========
 

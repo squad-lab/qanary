@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Install Qanary from PyPI with uv or pip. The guide also covers development installs, optional extras and migration from QCUtils."
+og:description: "Install Qanary from PyPI with uv or pip. The guide also covers development installs, optional extras and migration from QCUtils."
+---
 # Installation
 
 Qanary requires Python 3.13. Install the latest release from PyPI:

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Use Qanary's MultiChannelParameter to set several QCoDeS channels as one control, for gates that span several outputs. The example runs without hardware."
+og:description: "Use Qanary's MultiChannelParameter to set several QCoDeS channels as one control, for gates that span several outputs. The example runs without hardware."
+---
 # Control several channels as one
 
 `MultiChannelParameter` presents several QCoDeS parameters as one control. A

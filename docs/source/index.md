@@ -2,7 +2,8 @@
 title: Qanary
 myst:
   html_meta:
-    description: "Qanary is an open-source Python package for parameter sweeps and measurements with QCoDeS instruments. It stores each measurement as an xarray dataset and plots it live in Qimchi."
+    description: "Qanary is an open-source Python package for QCoDeS sweeps and measurements. It saves each measurement as an xarray dataset and plots it live in Qimchi."
+og:description: "Qanary is an open-source Python package for QCoDeS sweeps and measurements. It saves each measurement as an xarray dataset and plots it live in Qimchi."
 ---
 # Measurement Utilities for QCoDeS
 

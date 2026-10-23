@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Combine stepped and buffered sweeps in Qanary. Python steps the outer parameters while a QDAC-II and MFLI run a buffered 2D sweep."
+og:description: "Combine stepped and buffered sweeps in Qanary. Python steps the outer parameters while a QDAC-II and MFLI run a buffered 2D sweep."
+---
 # Combine stepped and buffered sweeps
 
 Qanary can run ordinary stepped sweeps and an instrument-buffered sweep in the

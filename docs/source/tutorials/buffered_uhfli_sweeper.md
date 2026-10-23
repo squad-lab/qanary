@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run a single-node buffered Qanary sweep on a Zurich Instruments UHFLI. The LabOne Sweeper generates and acquires the entire sweep."
+og:description: "Run a single-node buffered Qanary sweep on a Zurich Instruments UHFLI. The LabOne Sweeper generates and acquires the entire sweep."
+---
 # Sweep a UHFLI with its LabOne Sweeper
 
 The UHFLI can generate and acquire a sweep entirely through its LabOne Sweeper
