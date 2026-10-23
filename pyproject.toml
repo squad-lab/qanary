@@ -5,6 +5,7 @@ authors = [
   { name="Spandan Anupam", email="s.anupam@fz-juelich.de" },
   { name="Simon Schreibing", email="s.schreibing@fz-juelich.de" },
   { name="Jyotirmaya Shivottam", email="shivottam@proton.me" },
+  { name="Vincent Mourik", email="v.mourik@fz-juelich.de" },
 ]
 description = "Sweep and measurement utilities for qcodes"
 readme = "README.md"

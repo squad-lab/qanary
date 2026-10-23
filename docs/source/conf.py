@@ -16,7 +16,7 @@ import yaml
 
 project = "Qanary"
 copyright = "2024-%Y, Forschungszentrum Jülich GmbH, PGI-11"
-author = "Spandan Anupam, Simon Schreibing, Jyotirmaya Shivottam"
+author = "Spandan Anupam, Simon Schreibing, Jyotirmaya Shivottam, Vincent Mourik"
 
 # Read the version from installed package metadata instead of pinning a
 # literal, so a bump in pyproject.toml never has to be repeated here.
