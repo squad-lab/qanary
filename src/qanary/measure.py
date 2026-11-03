@@ -985,6 +985,7 @@ class Measurement:
             "Independent(s)",
             "Range",
             "Number of Points",
+            "Start Delay (s)",
             "Delay (s)",
         ]
 
@@ -995,6 +996,7 @@ class Measurement:
                     ",".join([param.label for param in sweep.parameter]),
                     _fmt_range(sweep.values),
                     len(sweep.values),
+                    sweep.start_delay,
                     sweep.delay,
                 ]
             )
