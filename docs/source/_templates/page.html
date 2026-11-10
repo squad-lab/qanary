@@ -5,3 +5,9 @@
 <script type="application/ld+json">{{ qanary_structured_data }}</script>
 {%- endif %}
 {% endblock %}
+{% block footer %}
+{{ super() }}
+<div class="legal-links">
+  <a class="muted-link" href="{{ pathto('legal') }}">Legal notice</a>
+</div>
+{% endblock footer %}

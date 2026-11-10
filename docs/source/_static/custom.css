@@ -52,3 +52,8 @@ body[data-theme="dark"] {
 dl.py > dt {
     white-space: normal;
 }
+
+.legal-links {
+    margin-top: 0.75rem;
+    font-size: var(--font-size--small);
+}
