@@ -12,7 +12,7 @@ Qanary simplifies measurement workflows and replaces QCoDeS for handling measure
 
 ## Installation
 
-Qanary requires Python 3.13. Install the latest release from PyPI:
+Qanary officially supports Python 3.14. Install the latest release from PyPI:
 
 ```console
 uv add "qanary[drivers]"

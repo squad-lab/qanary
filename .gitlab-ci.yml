@@ -80,10 +80,10 @@ citation:
 
 pytest:
   stage: test
-  # Python 3.13 is the supported runtime for this release.
+  # Test the oldest compatible and officially supported Python versions.
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.13"]
+      - PYTHON_VERSION: ["3.13", "3.14"]
   image: "python:${PYTHON_VERSION}"
   before_script:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -110,10 +110,11 @@ pytest-windows:
   stage: test
   tags:
     - windows
+  image: "python:3.14-windowsservercore-ltsc2025"
   variables:
-    PYTHON_VERSION: "3.13"
+    PYTHON_VERSION: "3.14"
   before_script:
-    # The python:3.13 Windows image ships no git -- the runner clones with
+    # The Python Windows image ships no git -- the runner clones with
     # its helper image instead. The test suite needs a real one:
     # tests/test_measure.py imports GitPython at module scope and builds
     # throwaway repositories to exercise the hash-push path. MinGit is the

@@ -9,8 +9,13 @@ fixes, tests, tutorials, and documentation.
 
 ## Development
 
-Qanary requires Python 3.13 and uses [uv](https://docs.astral.sh/uv/) for
-dependency management.
+Qanary uses [uv](https://docs.astral.sh/uv/) for dependency management.
+
+### Python support policy
+
+We support the second-newest stable Python feature release. This balances timely
+security and bug-fix support with enough time for our dependencies to stabilize
+on each new Python version.
 
 ### Setup
 
@@ -59,7 +64,10 @@ before your first substantial change.
 
 ## Test strategy
 
-The pytest suite in `tests/` covers sweeps, parameters, measurements, data storage, checkpoints, logging and the live registry. CI tests Linux and Windows to cover differences in Zarr storage and file locking. Both must pass before merging. Every pipeline reports coverage.
+The pytest suite in `tests/` covers sweeps, parameters, measurements, data storage,
+checkpoints, logging and the live registry. CI runs Python 3.13 and 3.14 on Linux,
+plus Python 3.14 on Windows for platform-specific storage and file-locking
+behavior. All jobs must pass before merging.
 
 Tests use dummy instruments because CI has no measurement hardware. The examples require real instruments, so `tests/test_examples.py` checks their syntax and imports without running them.
 

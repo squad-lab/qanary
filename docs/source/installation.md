@@ -6,7 +6,7 @@ og:description: "Install Qanary from PyPI with uv or pip. The guide also covers 
 ---
 # Installation
 
-Qanary requires Python 3.13. Install the latest release from PyPI:
+Qanary officially supports Python 3.14. Install the latest release from PyPI:
 
 ```console
 uv add "qanary[drivers]"
