@@ -23,7 +23,9 @@ repos:
       - id: check-toml
       - id: check-yaml
       - id: end-of-file-fixer
+        exclude: ^tests/fixtures/
       - id: trailing-whitespace
+        exclude: ^tests/fixtures/
         # Two trailing spaces are a hard line break in Markdown; stripping them
         # silently reflows the README and the docs pages.
         args: [--markdown-linebreak-ext=md]
