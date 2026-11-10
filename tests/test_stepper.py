@@ -1,22 +1,4 @@
-"""
-Tests for the non-buffered ``_stepper`` paths.
-
-``_stepper`` is the recursion that turns a list of sweeps into nested loops:
-at every level it drives the sweep parameters, and at the innermost level it
-reads the dependents and writes them into the pre-allocated Xarray dataset.
-The buffered paths are covered in ``test_buffered_progress.py``; this module
-covers everything a run without hardware-buffered instruments goes through.
-
-The assertions that matter most are about *where* a reading lands. The dataset
-is allocated up front and indexed by coordinate value through ``sweep_cache``,
-so an off-by-one in that bookkeeping does not crash -- it silently transposes
-or shifts a measurement. Each test therefore uses a dependent whose value
-identifies the point it was read at.
-
-Checkpointing is the other concern. A sweep must survive a transiently locked
-disk store, and must never lose the in-memory dataset when it fails.
-
-"""
+"""Tests for non-buffered sweep execution and checkpointing."""
 
 from types import SimpleNamespace
 
@@ -32,13 +14,7 @@ from qanary.sweep import PointSweep, Sweep, _stepper
 
 @pytest.fixture
 def signal(gates):
-    """
-    A dependent that encodes the gate positions it was read at.
-
-    Returns:
-        Parameter: Reads ``100 * x + y``, so every grid point is distinct.
-
-    """
+    """Return a dependent whose value identifies its grid position."""
     return Parameter(
         "signal",
         unit="A",
@@ -49,17 +25,7 @@ def signal(gates):
 
 
 def make_dataset(*sweeps, name: str = "signal") -> xr.Dataset:
-    """
-    Pre-allocate the dataset a measurement would seed before stepping.
-
-    Args:
-        *sweeps (Sweep): Sweeps in outer-to-inner order.
-        name (str): Name of the single dependent variable.
-
-    Returns:
-        xr.Dataset: NaN-filled grid with one coordinate per swept parameter.
-
-    """
+    """Preallocate a measurement dataset for the given sweeps."""
     dims = [param.name for sweep in sweeps for param in sweep.parameter]
     coords = {param.name: sweep.values for sweep in sweeps for param in sweep.parameter}
     shape = tuple(len(coords[dim]) for dim in dims)
@@ -69,18 +35,14 @@ def make_dataset(*sweeps, name: str = "signal") -> xr.Dataset:
     )
 
 
-# Where `step` sends a checkpoint when the caller passes no disk store.
-#
-# `_persist_disk` falls back to `dataset.to_zarr(store=data_location)` in that
-# case, writing `data_location` verbatim -- so a relative placeholder is not
-# inert. The previous default, the string "unused", put a real Zarr store in the
-# working directory, which under pytest is the repository root.
+# `_persist_disk` writes directly to this path when no disk store is supplied.
+# Keep it under pytest's temporary directory.
 _FALLBACK_LOCATION = None
 
 
 @pytest.fixture(autouse=True)
 def _fallback_location(tmp_path):
-    """Point the no-store checkpoint fallback at this test's tmp_path."""
+    """Put fallback checkpoints under pytest's temporary directory."""
     global _FALLBACK_LOCATION
     _FALLBACK_LOCATION = str(tmp_path / "stepper-fallback.zarr")
     yield
@@ -88,20 +50,7 @@ def _fallback_location(tmp_path):
 
 
 def step(dataset, sweeps, dependents, bar, **kwargs):
-    """
-    Call ``_stepper`` with the arguments a measurement would supply.
-
-    Args:
-        dataset (xr.Dataset): Pre-allocated dataset.
-        sweeps (list[Sweep]): Sweeps in outer-to-inner order.
-        dependents (list[Parameter]): Parameters read at the innermost level.
-        bar (Any): Progress bar.
-        **kwargs: Passed straight through to ``_stepper``.
-
-    Returns:
-        xr.Dataset: Whatever ``_stepper`` returns.
-
-    """
+    """Run ``_stepper`` with normal measurement defaults."""
     independents = [param for sweep in sweeps for param in sweep.parameter]
     return _stepper(
         dataset=dataset,
@@ -117,8 +66,6 @@ def step(dataset, sweeps, dependents, bar, **kwargs):
 
 
 class TestGridFilling:
-    """Every point read, and every point in the right cell."""
-
     def test_a_one_dimensional_sweep_fills_every_point(self, gates, signal, bar):
         swept = Sweep(gates.x, 0.0, 1.0, num=5)
         dataset = make_dataset(swept)
@@ -129,11 +76,6 @@ class TestGridFilling:
         assert bar.n == 5
 
     def test_repeated_coordinates_keep_each_reading(self, gates, bar):
-        """
-        Label-based assignment selects every matching coordinate. A point sweep
-        instead has to write by position so repeated visits remain distinct.
-
-        """
         readings = iter([10.0, 20.0, 30.0, 40.0])
         dependent = Parameter(
             "signal", unit="A", instrument=gates, get_cmd=lambda: next(readings)
@@ -147,7 +89,6 @@ class TestGridFilling:
         assert bar.n == 4
 
     def test_repeated_outer_coordinates_keep_their_grid_positions(self, gates, bar):
-        """Every dimension needs its own positional index during recursion."""
         readings = iter(np.arange(1.0, 7.0))
         dependent = Parameter(
             "signal", unit="A", instrument=gates, get_cmd=lambda: next(readings)
@@ -164,7 +105,6 @@ class TestGridFilling:
         assert bar.n == 6
 
     def test_repeated_points_shared_by_parameters_fill_the_diagonal(self, gates, bar):
-        """Each parameter in a shared point sweep keeps the same visit index."""
         readings = iter([10.0, 20.0, 30.0])
         dependent = Parameter(
             "signal", unit="A", instrument=gates, get_cmd=lambda: next(readings)
@@ -183,11 +123,6 @@ class TestGridFilling:
     def test_a_two_dimensional_sweep_lands_on_the_expected_cells(
         self, gates, signal, bar
     ):
-        """
-        The inner sweep varies fastest, and the dependent encodes both gate
-        positions, so a transposed or shifted assignment shows up immediately.
-
-        """
         outer = Sweep(gates.x, 0.0, 2.0, num=3)
         inner = Sweep(gates.y, 0.0, 1.0, num=2)
         dataset = make_dataset(outer, inner)
@@ -238,11 +173,6 @@ class TestGridFilling:
     def test_several_parameters_on_one_sweep_share_a_dimension_each(
         self, gates, signal, bar
     ):
-        """
-        A sweep over two parameters moves both together but still allocates a
-        dimension per parameter, so the grid is the diagonal of a square.
-
-        """
         swept = Sweep([gates.x, gates.y], 0.0, 1.0, num=3)
         dataset = make_dataset(swept)
 
@@ -253,17 +183,9 @@ class TestGridFilling:
 
 
 class TestSweepMechanics:
-    """Dwells, interrupts and the parallel path."""
-
     def test_start_delay_is_applied_once_per_sweep_entry(
         self, gates, signal, bar, monkeypatch
     ):
-        """
-        ``start_delay`` lets an instrument settle after a jump back to the
-        start of a sweep, so the inner sweep must pay it on every pass, not
-        only on the first.
-
-        """
         dwells = []
         monkeypatch.setattr("qanary.sweep.sleep", dwells.append)
         outer = Sweep(gates.x, 0.0, 1.0, num=3, start_delay=5.0)
@@ -286,12 +208,6 @@ class TestSweepMechanics:
         assert dwells.count(0.25) == 4
 
     def test_an_interrupt_stops_the_sweep(self, gates, signal, bar):
-        """
-        The interrupt callable is polled before each point, and a raised
-        InterruptedError is what ``Measurement.run`` catches to finalise the
-        partial dataset.
-
-        """
         swept = Sweep(gates.x, 0.0, 1.0, num=10)
         dataset = make_dataset(swept)
 
@@ -313,11 +229,6 @@ class TestSweepMechanics:
         assert np.isnan(dataset["signal"].values).all()
 
     def test_parallel_sweep_still_visits_every_point(self, gates, signal, bar):
-        """
-        The parallel path sets each parameter on its own thread. The reading
-        may race the setter, so this only asserts the grid was fully visited.
-
-        """
         swept = Sweep([gates.x, gates.y], 0.0, 1.0, num=3)
         dataset = make_dataset(swept)
 
@@ -328,13 +239,6 @@ class TestSweepMechanics:
     def test_an_independent_missing_from_the_list_is_skipped(
         self, gates, signal, bar, caplog, tmp_path
     ):
-        """
-        ``slow_indexers`` is built by looking each swept parameter up in
-        ``independents``. A parameter that is not there cannot be indexed, and
-        the point is written to whatever the remaining indexers select rather
-        than crashing mid-run.
-
-        """
         swept = Sweep(gates.x, 0.0, 1.0, num=2)
         dataset = make_dataset(swept)
 
@@ -382,11 +286,6 @@ class TestPersistence:
         np.testing.assert_allclose(restored["signal"].values, 100.0 * swept.values)
 
     def test_the_disk_store_matches_the_memory_store(self, gates, signal, bar, stores):
-        """
-        The disk checkpoint copies only changed keys out of the memory store,
-        so the two must end up byte-identical.
-
-        """
         swept = Sweep(gates.x, 0.0, 1.0, num=4)
         dataset = make_dataset(swept)
 
@@ -449,12 +348,6 @@ class TestPersistence:
     def test_a_failed_netcdf_snapshot_does_not_stop_the_sweep(
         self, gates, signal, bar, stores, tmp_path, caplog
     ):
-        """
-        The snapshot is explicitly best-effort -- it is known to fail on
-        Windows while the zarr store is open -- so it must never take the run
-        down with it.
-
-        """
         swept = Sweep(gates.x, 0.0, 1.0, num=3)
         dataset = make_dataset(swept)
 
@@ -573,16 +466,9 @@ class TestLockedDiskStore:
 
 
 class TestFailureHandling:
-    """What survives when a dependent or a parameter raises mid-sweep."""
-
     def test_a_failing_dependent_preserves_what_was_already_acquired(
         self, gates, bar, tmp_path
     ):
-        """
-        The whole point of the try/except around the recursion: a broken
-        instrument must not cost the points measured before it broke.
-
-        """
         readings = iter([1.0, 2.0])
 
         def flaky():
@@ -609,11 +495,6 @@ class TestFailureHandling:
     def test_a_keyboard_interrupt_preserves_the_in_memory_dataset(
         self, gates, bar, tmp_path
     ):
-        """
-        Ctrl-C is the ordinary way to end a run early, and it is caught
-        explicitly because it is not an ``Exception``.
-
-        """
         readings = iter([7.0])
 
         def interrupted():
@@ -636,11 +517,6 @@ class TestFailureHandling:
     def test_a_failed_preservation_is_logged_and_the_original_error_wins(
         self, gates, signal, bar, caplog, monkeypatch
     ):
-        """
-        If the rescue write itself fails, the caller must still see the error
-        that ended the sweep, not the one from the rescue attempt.
-
-        """
 
         def refuse(*args, **kwargs):
             raise RuntimeError("memory store is gone too")
@@ -686,14 +562,7 @@ class TestSaveInterval:
 
 
 class TestDegenerateSweeps:
-    """Calls with no slow sweep at all, and the store combinations."""
-
     def test_no_sweeps_reads_each_dependent_once(self, gates, signal, bar, tmp_path):
-        """
-        A zero-dimensional measurement: no coordinates, one reading, one
-        point on the bar.
-
-        """
         gates.x(0.5)
         dataset = xr.Dataset({"signal": ((), np.nan)})
 

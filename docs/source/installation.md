@@ -1,8 +1,8 @@
 ---
 myst:
   html_meta:
-    description: "Install Qanary from PyPI with uv or pip. The guide also covers development installs, optional extras and migration from QCUtils."
-og:description: "Install Qanary from PyPI with uv or pip. The guide also covers development installs, optional extras and migration from QCUtils."
+    description: "Install Qanary with uv or pip, migrate from QCUtils, or set up a development environment."
+og:description: "Install Qanary with uv or pip, migrate from QCUtils, or set up a development environment."
 ---
 # Installation
 

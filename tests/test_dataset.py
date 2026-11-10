@@ -1,14 +1,4 @@
-"""
-Tests for ``qanary.dataset``.
-
-These are the functions a user reaches for after a measurement, often after
-something went wrong with it, so the error paths carry as much weight as the
-happy ones. ``convert`` in particular is a recovery tool -- it exists for the
-case where a run crashed before the framework turned its live ``.zarr`` store
-into a ``.nc`` file -- and it must not destroy the Zarr store it is recovering
-from unless the netCDF file is actually on disk.
-
-"""
+"""Tests for loading, converting, and recovering datasets."""
 
 import shutil
 from pathlib import Path
@@ -34,13 +24,7 @@ from qanary.dataset import (
 
 @pytest.fixture
 def measurement() -> xr.Dataset:
-    """
-    A dataset shaped like a small two-dimensional sweep.
-
-    Returns:
-        xr.Dataset: One dependent over two coordinates, with attributes.
-
-    """
+    """Return a small two-dimensional measurement dataset."""
     return xr.Dataset(
         {"dmm_v1": (("dac_ch1", "dac_ch2"), np.arange(6.0).reshape(2, 3))},
         coords={"dac_ch1": [0.0, 1.0], "dac_ch2": [0.0, 0.5, 1.0]},
@@ -49,8 +33,6 @@ def measurement() -> xr.Dataset:
 
 
 class TestLoad:
-    """``load`` picks the engine from the path and reports failures plainly."""
-
     def test_reads_back_a_netcdf_file(self, tmp_path, measurement):
         path = tmp_path / "1-abc.nc"
         measurement.to_netcdf(path)
@@ -76,11 +58,6 @@ class TestLoad:
             load(missing)
 
     def test_unreadable_file_is_reported_as_a_load_failure(self, tmp_path):
-        """
-        A truncated or half-written file is the common real case, and the
-        raw engine traceback is not what a measurement script should surface.
-
-        """
         broken = tmp_path / "truncated.nc"
         broken.write_bytes(b"not a netCDF file")
 
@@ -122,11 +99,6 @@ class TestConvert:
             convert(tmp_path / "4-nothing.nc")
 
     def test_refuses_to_overwrite_an_existing_netcdf(self, stranded, measurement):
-        """
-        The finished file is the one with the data; clobbering it with a
-        partial zarr store would be the wrong way round.
-
-        """
         measurement.to_netcdf(stranded)
 
         with pytest.raises(DatasetConvertError, match="already exists"):
@@ -142,7 +114,6 @@ class TestConvert:
         xr.testing.assert_identical(xr.load_dataset(stranded), measurement)
 
     def test_unreadable_zarr_store_is_reported(self, tmp_path):
-        """A directory named ``.zarr`` is not necessarily a zarr store."""
         nc_path = tmp_path / "5-corrupt.nc"
         (tmp_path / "5-corrupt.zarr").mkdir()
 
@@ -152,11 +123,6 @@ class TestConvert:
     def test_failed_write_cleans_up_and_keeps_the_source(
         self, tmp_path, stranded, monkeypatch
     ):
-        """
-        A full disk must not leave a ``.nc.tmp`` stub that a later run mistakes
-        for output, and must not delete the zarr store the data still lives in.
-
-        """
 
         def explode(*args, **kwargs):
             Path(args[0]).write_bytes(b"partial")
@@ -174,12 +140,6 @@ class TestConvert:
     def test_undeletable_zarr_store_does_not_fail_the_conversion(
         self, stranded, monkeypatch, caplog
     ):
-        """
-        The netCDF file is the product; a zarr store left behind because
-        Windows still holds a handle on it is a cleanup nuisance, not a
-        failure.
-
-        """
         monkeypatch.setattr(
             shutil, "rmtree", lambda *a, **k: (_ for _ in ()).throw(OSError("locked"))
         )
@@ -195,11 +155,6 @@ class TestConvert:
 
 
 def test_every_dataset_error_shares_one_base_class():
-    """
-    A script that only wants to know "the dataset step failed" should be able
-    to catch one exception rather than five.
-
-    """
     for error in (
         DatasetNotFoundError,
         ZarrStoreNotFoundError,

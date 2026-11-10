@@ -1,28 +1,4 @@
-"""
-Performance guardrails for checkpointing.
-
-These are *complexity* tests, not wall-clock ones. A checkpoint has to stay
-proportional to what the sweep just acquired rather than to the size of the
-dataset, and the cheapest way to pin that is to count the work rather than time
-it -- a threshold in milliseconds passes or fails on how loaded the runner is,
-which makes it noise that people learn to ignore.
-
-The property that matters: growing the dataset must not grow the cost of one
-checkpoint. Both stores are covered.
-
-  - the in-memory store, which Qimchi-Connect snapshots, is written by region
-  - the on-disk store is written key by key, skipping unchanged keys
-
-Measured on the reference machine before these were added, at 12 M points
-(91 MiB, one checkpoint):
-
-    to_zarr(mode="w"), whole dataset     123.6 ms   over the 0.1 s interval
-    region write, rows since last flush   20.1 ms   6.2x faster
-
-If a change makes these tests fail, the checkpoint has gone back to being
-O(dataset) and a large measurement will spend more time saving than measuring.
-
-"""
+"""Checkpoint complexity tests for memory and disk stores."""
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -91,8 +67,6 @@ class ProbeParameter:
 
 
 class ProbeDependent:
-    """Dependent returning the row that ``_stepper`` should persist."""
-
     name = "signal"
 
     def __init__(self, values):
@@ -116,9 +90,7 @@ def checkpoint_row(ds: xr.Dataset, store: CountingDict, row: int) -> None:
         delay=0.0,
     )
 
-    # A seeded, region-writable store must never fall through to a full write.
-    # Patching the production method makes this test fail if `_persist_memory`
-    # regresses, even when both paths touch the same number of chunks.
+    # Fail immediately if a region checkpoint falls back to a full write.
     with patch.object(
         xr.Dataset,
         "to_zarr",
@@ -208,8 +180,6 @@ class TestDiskCheckpointStaysLocal:
 
 
 class TestRegionSafety:
-    """When a region cannot be identified, the whole store must be rewritten."""
-
     @pytest.mark.parametrize(
         "position, why",
         [
@@ -222,12 +192,6 @@ class TestRegionSafety:
         assert _memory_region(dataset(16), position, 0) is None, why
 
     def test_a_repeated_coordinate_value_is_ambiguous(self):
-        """
-        ``CircularSweep`` revisits values, so a coordinate can appear twice and
-        the row is no longer implied. Rewriting everything is correct; guessing
-        a row is not.
-
-        """
         ds = xr.Dataset(
             {"signal": (("x", "y"), np.zeros((4, 2)))},
             coords={"x": np.array([0.0, 1.0, 1.0, 0.0]), "y": np.arange(2.0)},
@@ -241,7 +205,6 @@ class TestRegionSafety:
         assert _memory_region(ds, {"x": 20.0}, 17) == (17, 21, "x")
 
     def test_a_position_behind_the_flush_point_is_still_covered(self):
-        """A sweep that moves backwards must not leave the row unwritten."""
         ds = dataset(32)
 
         assert _memory_region(ds, {"x": 5.0}, 20) == (5, 6, "x")

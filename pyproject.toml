@@ -64,8 +64,7 @@ dev = [
 ]
 docs = [
     "sphinx>=8.2",
-    # [linkify] pulls linkify-it-py, required by the `linkify` MyST extension
-    # enabled in conf.py. Without it every docs build fails at import.
+    # The MyST linkify extension requires linkify-it-py.
     "myst-parser[linkify]>=4",
     "furo>=2024.8",
     "sphinx-copybutton>=0.5",
@@ -80,9 +79,7 @@ package = true
 [tool.uv.sources]
 qanary = { workspace = true }
 
-# Hatchling, like Qimchi-Connect and qcdrivers. poetry-core collapses
-# `authors` to the first entry, so everyone but the first author disappears
-# from the published metadata.
+# Hatchling preserves every author in the published metadata.
 [build-system]
 requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
@@ -91,8 +88,7 @@ build-backend = "hatchling.build"
 packages = ["src/qanary"]
 
 [tool.semantic_release]
-# NOTE: Commit-based versioning. CI owns the version literal below; do not bump it by
-# hand, or semantic-release and the tag history will disagree.
+# CI updates the version from conventional commits; do not bump it by hand.
 version_toml = ["pyproject.toml:project.version"]
 commit_message = "chore(release): v{version}\n\n[skip ci]"
 commit_author = "Janitor <squad@fz-juelich.de>"
@@ -100,7 +96,7 @@ commit_author = "Janitor <squad@fz-juelich.de>"
 build_command = "bash scripts/sync_release_metadata.sh && uv build"
 assets = ["CITATION.cff", "README.md"]
 tag_format = "v{version}"
-# Keep pre-1.0 breaking changes on the minor line: v0.9.0 becomes v0.10.0.
+# Before 1.0, breaking changes increment the minor version.
 major_on_zero = false
 allow_zero_version = true
 
@@ -108,15 +104,13 @@ allow_zero_version = true
 match = "main"
 prerelease = false
 
-# preview is the release train: it is built and tested, never released. Cutting
-# release candidates from it later only needs prerelease = true here.
+# Preview is built and tested but never published.
 [tool.semantic_release.branches.preview]
 match = "preview"
 prerelease = true
 prerelease_token = "rc"
 
-# Without this, python-semantic-release assumes GitHub and every commit link it
-# writes into CHANGELOG.md points at github.com/squad-lab/qanary -- a 404.
+# Tell semantic-release to generate GitLab links in the changelog.
 [tool.semantic_release.remote]
 type = "gitlab"
 domain = "gitlab.com"
@@ -131,10 +125,8 @@ exclude_commit_patterns = [
 
 [tool.ruff]
 target-version = "py313"
-# Ruff 0.16 formats Python code blocks inside Markdown, but the ruff-format
-# pre-commit hook only passes it Python files. Excluding Markdown keeps a local
-# `ruff format .`, the hooks and CI in agreement, rather than having CI fail on
-# md files.
+# Pre-commit only passes Python files to ruff-format, so exclude Markdown from
+# repository-wide Ruff runs as well.
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]

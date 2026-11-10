@@ -1,8 +1,7 @@
 image: "python:3.13"
 
-# Branch model: feature branches -> preview -> main. Everything is linted and
-# tested on every branch, preview additionally proves the package builds, and
-# only main creates a release.
+# Feature branches merge into preview, then main. Every branch is linted and
+# tested; preview also builds the package, and main creates releases.
 
 stages:
   - format
@@ -17,8 +16,7 @@ include:
 variables:
   SECRET_DETECTION_ENABLED: "true"
   UV_CACHE_DIR: "$CI_PROJECT_DIR/.uv-cache"
-  # Portable git for the Windows test job. Pinned rather than "latest" so a
-  # moved URL fails the download loudly instead of drifting.
+  # Portable Git for Windows tests. Pin the URL so updates are explicit.
   MINGIT_URL: "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip"
 
 sast:
@@ -27,13 +25,9 @@ sast:
 secret_detection:
   stage: test
 
-# Fixes what ruff can fix, pushes the result back to the branch, then gates on
-# whatever is left, so a merge request is never blocked on a forgotten
-# `ruff format`.
+# Apply Ruff fixes, push them to the branch, then check what remains.
 #
-# The commit carries [skip ci], which GitLab honours by creating no pipeline
-# for that push -- without it this job would trigger itself forever. It is the
-# same mechanism semantic-release already uses for its release commit.
+# [skip ci] prevents the formatting commit from starting another pipeline.
 lint:
   stage: format
   before_script:
@@ -50,25 +44,22 @@ lint:
       if [ -n "$CI_COMMIT_BRANCH" ] && [ "$CI_COMMIT_BRANCH" != "$CI_DEFAULT_BRANCH" ]; then
         # CI checks out a detached HEAD; put the branch here so a commit lands on it.
         git checkout -B "$CI_COMMIT_BRANCH" "$CI_COMMIT_SHA"
-        # Leftovers are the gate's business below -- exiting here would discard
-        # the fixes ruff has already written to disk.
+        # Keep any unfixable errors for the checks below.
         ruff check --fix . || true
         ruff format .
         if git diff --quiet; then
           echo "Nothing to fix."
         else
           git diff --stat
-          # -u, not -A: never sweep up a cache directory the job created.
+          # Avoid adding cache files created by the job.
           git add -u
           git commit -m "style: apply ruff fixes [skip ci]"
-          # Never force. If the branch moved while this ran, the rejected push
-          # is the right outcome and the next pipeline fixes the new tip.
+          # Do not overwrite changes pushed while this job was running.
           git push origin "HEAD:$CI_COMMIT_BRANCH" ||
             echo "WARNING: fixes could not be pushed. Is $CI_COMMIT_BRANCH protected against squad_janitor?"
         fi
       fi
-    # The gate. Formatting can no longer fail it on a branch, because the run
-    # above has already applied it; a real lint error still can.
+    # Fail on lint errors that Ruff could not fix.
     - ruff check .
     - ruff format --check .
 
@@ -80,7 +71,7 @@ citation:
 
 pytest:
   stage: test
-  # Test the oldest compatible and officially supported Python versions.
+  # Test the oldest and newest supported Python versions.
   parallel:
     matrix:
       - PYTHON_VERSION: ["3.13", "3.14"]
@@ -114,11 +105,8 @@ pytest-windows:
   variables:
     PYTHON_VERSION: "3.14"
   before_script:
-    # The Python Windows image ships no git -- the runner clones with
-    # its helper image instead. The test suite needs a real one:
-    # tests/test_measure.py imports GitPython at module scope and builds
-    # throwaway repositories to exercise the hash-push path. MinGit is the
-    # portable Git for Windows build: a zip, no installer, no admin rights.
+    # The Windows image has no Git executable. The measurement tests use one
+    # for temporary repositories, so install the portable MinGit build.
     - $ProgressPreference = "SilentlyContinue"
     - Invoke-WebRequest -Uri "$env:MINGIT_URL" -OutFile "$env:TEMP\mingit.zip"
     - Expand-Archive -Path "$env:TEMP\mingit.zip" -DestinationPath "C:\mingit" -Force

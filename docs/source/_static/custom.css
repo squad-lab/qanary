@@ -1,6 +1,6 @@
-/* Adapted from the Qimchi Dash documentation stylesheet.
+/* Adapted from the Qimchi Dash documentation stylesheet.*/
 
-/* Sidebar brand: mark on the left, wordmark beside it, on one row. */
+/* Keep the sidebar logo and wordmark on one row. */
 .sidebar-brand {
     display: flex;
     flex-direction: row;
@@ -11,15 +11,13 @@
 }
 
 .sidebar-logo-container {
-    /* Furo adds vertical margin here for the stacked layout. */
+    /* Remove spacing from Furo's stacked layout. */
     margin: 0;
     flex: 0 0 auto;
 }
 
 .sidebar-logo {
-    /* Size by height, not width: the mark is roughly 1.4:1, so constraining the
-     * width would leave it shorter than the wordmark beside it.
-     */
+    /* Match the wordmark height without changing the logo's aspect ratio. */
     max-height: 2.25rem;
     width: auto;
     max-width: none;
@@ -30,7 +28,7 @@
     margin: 0;
 }
 
-/* SQUAD / FZJ accent on top of Furo's defaults. */
+/* SQUAD/FZJ accent colors. */
 body {
     --color-brand-primary: #0b7285;
     --color-brand-content: #0b7285;

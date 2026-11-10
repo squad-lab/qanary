@@ -1,20 +1,4 @@
-"""
-Tests for ``qanary.measure`` -- the station, the measurement and the run.
-
-``Measurement.run`` is where everything else meets: it snapshots the
-instruments, allocates the dataset, seeds the in-memory and on-disk Zarr
-stores, registers the run for live plotting, drives ``_stepper``, exports
-netCDF and pushes a hash. Most of it is bookkeeping, and bookkeeping is
-exactly what silently produces a dataset nobody can interpret six months
-later, so the metadata assertions here are as load-bearing as the numeric
-ones.
-
-The tests run real measurements against ``DummyInstrument``. Only three things
-are faked: the package freeze (a subprocess call worth seconds per run), the
-WebSocket server (Qimchi-Connect's concern) and, where a test says so, the
-GitLab hash push.
-
-"""
+"""Tests for stations, measurements, and complete runs."""
 
 import json
 import os
@@ -46,12 +30,6 @@ from qanary.sweep import PointSweep, Sweep
 
 
 class TestSanitizeForJson:
-    """
-    Instrument snapshots contain whatever a driver cached, and a single
-    unserialisable object would otherwise lose the entire metadata blob.
-
-    """
-
     def test_numpy_arrays_become_lists(self):
         assert _sanitize_for_json(np.arange(3)) == [0, 1, 2]
 
@@ -73,11 +51,6 @@ class TestSanitizeForJson:
         assert sorted(_sanitize_for_json({1, 2})) == [1, 2]
 
     def test_unserialisable_objects_become_their_repr(self):
-        """
-        The driver context objects this exists for -- stringifying keeps the
-        snapshot readable instead of dropping the parameter entirely.
-
-        """
 
         class TriggerContext:
             def __repr__(self):
@@ -97,20 +70,12 @@ class TestSanitizeForJson:
 
 
 class TestFindAvailablePort:
-    """Picking the WebSocket port for live plotting."""
-
     def test_returns_a_port_that_can_be_bound(self):
         port = _find_available_port(8765)
 
         assert 8765 <= port < 8865
 
     def test_skips_a_port_already_in_use(self):
-        """
-        Two measurements in one session must not be told to serve on the same
-        port. Only "not the busy one" is asserted -- which of the following
-        ports is free is the machine's business.
-
-        """
         import socket
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taken:
@@ -122,12 +87,6 @@ class TestFindAvailablePort:
         assert busy < found <= busy + 100
 
     def test_falls_back_to_the_starting_port_when_none_are_free(self, monkeypatch):
-        """
-        Returning the start port rather than raising means the caller reports
-        a failed server start, which is degraded live plotting rather than a
-        failed measurement.
-
-        """
 
         class AlwaysBusy:
             def __enter__(self):
@@ -282,11 +241,6 @@ class TestLiveStoreRegistry:
     def test_a_failing_database_does_not_break_unregistration(
         self, offline_live_server, caplog
     ):
-        """
-        Unregistration runs in a ``finally``; raising here would mask whatever
-        actually ended the measurement.
-
-        """
         with patch.object(
             measure, "close_live_measurement", side_effect=RuntimeError("locked")
         ):
@@ -296,8 +250,6 @@ class TestLiveStoreRegistry:
 
 
 class TestStation:
-    """The station is the list of parameters that gets snapshotted."""
-
     def test_a_single_parameter_is_added_with_its_alias(self, gates):
         built = Station("s")
 
@@ -338,13 +290,6 @@ class TestStation:
             built.remove_parameter(gates.x)
 
     def test_the_duplicate_guard_rejects_a_repeated_name(self, gates):
-        """
-        ``add_parameter`` used to compare the freshly built wrapper against the
-        list. A new wrapper is built on every call and Parameter compares by
-        identity, so the guard never fired and the same gate could be
-        registered -- and snapshotted -- twice. It now compares by name.
-
-        """
         built = Station("s")
         built.add_parameter("plunger", "Plunger", gates.x)
 
@@ -354,7 +299,6 @@ class TestStation:
         assert len(built.parameters) == 1
 
     def test_distinct_names_are_still_accepted(self, gates):
-        """The guard keys on the registered name, not on the qcodes parameter."""
         built = Station("s")
 
         built.add_parameter("plunger", "Plunger", gates.x)
@@ -364,8 +308,6 @@ class TestStation:
 
 
 class TestMeasurementSetup:
-    """Where a measurement decides to write, and under what identity."""
-
     def test_creates_its_directory_tree_from_the_sample_hierarchy(
         self, measurement, tmp_path
     ):
@@ -378,11 +320,6 @@ class TestMeasurementSetup:
         assert measurement.id.startswith("1-")
 
     def test_the_identifier_carries_a_uuid(self, measurement):
-        """
-        The counter is per-directory, so the uuid is what makes the identifier
-        unique across samples and machines.
-
-        """
         assert len(measurement.id.split("-", 1)[1].split("-")) == 5
 
     def test_the_number_continues_from_the_files_already_there(
@@ -413,11 +350,6 @@ class TestMeasurementSetup:
         assert Path(measurement.data).stem == Path(measurement.live_data).stem
 
     def test_a_fridge_name_gives_the_hash_repository_its_own_clone(self, measurement):
-        """
-        Two fridges push to different branches of the same repository, and a
-        shared clone would have them fighting over the checked-out branch.
-
-        """
         assert measurement.git_repo.endswith("-triton")
 
     def test_without_a_fridge_name_the_default_repository_is_used(
@@ -432,14 +364,6 @@ class TestMeasurementSetup:
 
 
 class TestGetInstalledPackages:
-    """
-    The environment freeze that goes into the dataset metadata.
-
-    Called unbound, since every other test in this module patches the method
-    out -- freezing an environment costs seconds per measurement.
-
-    """
-
     freeze = staticmethod(Measurement.get_installed_packages)
 
     def test_prefers_uv(self):
@@ -452,7 +376,6 @@ class TestGetInstalledPackages:
         assert check.call_args_list[0].args[0][0] == "uv"
 
     def test_falls_back_to_pip_when_uv_is_absent(self):
-        """uv-created environments need not contain pip, and vice versa."""
         outputs = [FileNotFoundError(), "qcodes==0.54\n"]
 
         with patch.object(subprocess, "check_output", side_effect=outputs) as check:
@@ -462,11 +385,6 @@ class TestGetInstalledPackages:
         assert check.call_args_list[1].args[0][1:] == ["-m", "pip", "freeze"]
 
     def test_returns_nothing_when_neither_works(self):
-        """
-        An unrecorded environment is a worse dataset, not a failed
-        measurement.
-
-        """
         with patch.object(
             subprocess,
             "check_output",
@@ -476,8 +394,6 @@ class TestGetInstalledPackages:
 
 
 class TestDatasetAllocation:
-    """The empty grid a run fills in, and the metadata attached to it."""
-
     def test_a_data_array_spans_every_swept_parameter(self, measurement, gates, signal):
         sweeps = [Sweep(gates.x, 0.0, 1.0, num=3), Sweep(gates.y, 0.0, 1.0, num=4)]
 
@@ -487,11 +403,6 @@ class TestDatasetAllocation:
         assert array.shape == (3, 4)
 
     def test_the_grid_starts_out_empty(self, measurement, gates, signal):
-        """
-        NaN rather than zero, so an interrupted run is visibly partial instead
-        of looking like a measurement that read zero everywhere.
-
-        """
         array = measurement._make_dataarray([Sweep(gates.x, 0.0, 1.0, num=3)], signal)
 
         assert np.isnan(array.values).all()
@@ -508,11 +419,6 @@ class TestDatasetAllocation:
         }
 
     def test_each_coordinate_carries_its_own_metadata(self, measurement, gates, signal):
-        """
-        Qimchi labels its axes from these, so a coordinate without them plots
-        as a bare number.
-
-        """
         array = measurement._make_dataarray([Sweep(gates.x, 0.0, 1.0, num=2)], signal)
 
         assert array.coords["x"].attrs["unit"] == "V"
@@ -550,11 +456,6 @@ class TestDatasetAllocation:
     def test_without_a_fridge_name_the_cryostat_falls_back_to_the_hostname(
         self, tmp_path, station, gates, signal, live_registry, offline_live_server
     ):
-        """
-        The hostname convention is ``<lab>-<fridge>``; a machine that does not
-        follow it must still produce a dataset.
-
-        """
         with patch.object(Measurement, "get_installed_packages", return_value=""):
             plain = Measurement(
                 "W1", "hall-bar", "S1", "pinchoff", station, str(tmp_path), {}
@@ -568,11 +469,6 @@ class TestDatasetAllocation:
     def test_a_hostname_without_the_lab_prefix_falls_back_to_a_placeholder(
         self, measurement, gates, signal, monkeypatch
     ):
-        """
-        The convention is ``<lab>-<fridge>``. A laptop called ``standalone``
-        must still produce a dataset, just one that cannot name its fridge.
-
-        """
         measurement.fridge_name = ""
         monkeypatch.setattr("qanary.measure.socket.gethostname", lambda: "standalone")
 
@@ -582,8 +478,6 @@ class TestDatasetAllocation:
 
 
 class TestPrintTable:
-    """The run summary printed before a measurement starts."""
-
     def test_columns_are_padded_to_a_common_width(self, measurement, capsys):
         measurement._print_table(
             [["up1", "Up Plunger 1", -1.0, "V"], ["d", "D", 0.5, "V"]],
@@ -607,8 +501,6 @@ class TestPrintTable:
 
 
 class TestDataHash:
-    """The content hash pushed to the measurement-hashes repository."""
-
     def test_hashes_a_netcdf_file(self, measurement, tmp_path):
         Path(measurement.data).write_bytes(b"measurement bytes")
 
@@ -622,7 +514,6 @@ class TestDataHash:
         assert measurement._compute_data_hash() != first
 
     def test_hashes_a_directory_dataset_too(self, measurement):
-        """Older measurements were left as ``.zarr`` directories."""
         folder = Path(measurement.data)
         folder.mkdir()
         (folder / "chunk.0").write_bytes(b"data")
@@ -651,11 +542,6 @@ class TestFinalizeDiskArtifacts:
     def test_prefers_the_in_memory_dataset_over_the_zarr_store(
         self, measurement, seeded
     ):
-        """
-        A checkpoint can lag behind after a transient lock, so ``self.arr`` is
-        the authoritative copy and must win.
-
-        """
         seeded["signal"].values[:] = [9.0, 9.0, 9.0]
 
         measurement._finalize_disk_artifacts()
@@ -678,11 +564,6 @@ class TestFinalizeDiskArtifacts:
     def test_with_nothing_to_export_it_reports_rather_than_raising(
         self, measurement, caplog
     ):
-        """
-        Finalisation runs in a ``finally``; raising here would replace the
-        error that actually ended the run.
-
-        """
         measurement.arr = None
 
         assert measurement._finalize_disk_artifacts() is None
@@ -697,18 +578,11 @@ class TestFinalizeDiskArtifacts:
         offline_live_server,
         quiet_registry_maintenance,
     ):
-        """
-        Qimchi-Connect can record a measurement without a disk path, so Qanary
-        must guarantee its own runs have one. The run seeds a ``.zarr`` store
-        before publishing and advertises that path.
-
-        """
         published: list = []
         real = measure._register_memory_store
 
         def capture(measurement_id, store, disk_path=None):
-            # Recorded here rather than after the run: finalisation removes the
-            # live .zarr store once the netCDF export succeeds.
+            # Record the live path before finalization removes the Zarr store.
             published.append(
                 (measurement_id, disk_path, disk_path and Path(disk_path).exists())
             )
@@ -732,12 +606,6 @@ class TestFinalizeDiskArtifacts:
         offline_live_server,
         quiet_registry_maintenance,
     ):
-        """
-        While a run is active, Qimchi reads the registry row to locate it. The
-        row must carry the live ``.zarr`` path as soon as it is written, rather
-        than receiving only the final netCDF path during finalisation.
-
-        """
         rows: list = []
         real = measure._register_memory_store
 
@@ -773,11 +641,6 @@ class TestFinalizeDiskArtifacts:
     def test_a_failed_export_rescues_the_live_store_beside_the_data(
         self, measurement, seeded, caplog
     ):
-        """
-        The live store is the only copy left when the export fails, so it has
-        to end up somewhere the user will find it.
-
-        """
         with (
             patch.object(
                 xr.Dataset, "to_netcdf", side_effect=RuntimeError("disk full")
@@ -808,25 +671,8 @@ class TestFinalizeDiskArtifacts:
 
 
 class TestPushGitlab:
-    """
-    The hash push, exercised against a local bare repository.
-
-    The real remote is a GitLab instance reached over SSH, but nothing in the
-    function is specific to it: pointing ``origin`` at a bare repository on
-    disk exercises the clone-or-open, branch-per-cryostat and commit logic for
-    real.
-
-    """
-
     @pytest.fixture
     def hashes_repo(self, tmp_path, measurement):
-        """
-        An initialised hash repository with a local bare origin.
-
-        Returns:
-            Repo: The working clone ``_push_gitlab`` will operate on.
-
-        """
         origin = tmp_path / "hashes-origin.git"
         Repo.init(origin, bare=True, initial_branch="main")
         work = tmp_path / "hashes"
@@ -858,11 +704,6 @@ class TestPushGitlab:
     def test_records_the_dataset_attributes_alongside_the_hash(
         self, measurement, hashes_repo
     ):
-        """
-        The hash alone proves nothing about what was measured; the attributes
-        are what make the record identifiable later.
-
-        """
         dataset = xr.Dataset(attrs={"Sample Name": "S1", "Wafer ID": "W1"})
 
         measurement._push_gitlab(dataset, "abc123")
@@ -875,7 +716,6 @@ class TestPushGitlab:
     def test_commits_onto_a_branch_named_for_the_cryostat(
         self, measurement, hashes_repo
     ):
-        """One branch per fridge, so two fridges never collide on a push."""
         measurement._push_gitlab(xr.Dataset(), "abc123")
 
         assert hashes_repo.active_branch.name == "triton"
@@ -897,12 +737,6 @@ class TestPushGitlab:
     def test_a_branch_that_only_exists_on_the_remote_is_checked_out(
         self, measurement, hashes_repo
     ):
-        """
-        The second machine measuring on a fridge finds the branch on the
-        remote but not locally, and must track it rather than starting a
-        parallel history.
-
-        """
         measurement._push_gitlab(xr.Dataset(), "abc123")
         hashes_repo.git.checkout("-b", "scratch")
         hashes_repo.git.branch("-D", "triton")
@@ -925,8 +759,6 @@ class TestPushGitlab:
 
 
 class TestRun:
-    """End-to-end measurements, from an empty grid to a netCDF file."""
-
     def test_a_one_dimensional_sweep_is_measured_and_exported(
         self, measurement, gates, signal
     ):
@@ -971,11 +803,6 @@ class TestRun:
     def test_the_exported_dataset_carries_the_run_metadata(
         self, measurement, gates, signal
     ):
-        """
-        Everything needed to reproduce the run: the instrument state, the
-        station parameters, the sweeps and the user's own metadata.
-
-        """
         measurement.run(Sweep(gates.x, 0.0, 1.0, num=3), [signal], no_hashing=True)
 
         attrs = xr.load_dataset(measurement.data).attrs
@@ -988,11 +815,6 @@ class TestRun:
     def test_a_snapshot_that_is_not_serialisable_is_sanitised(
         self, measurement, gates, signal
     ):
-        """
-        Drivers leave context objects in their parameter caches after a sweep.
-        The whole metadata blob must survive one of them.
-
-        """
         gates.snapshot = lambda *a, **k: {"context": object()}
 
         measurement.run(Sweep(gates.x, 0.0, 1.0, num=2), [signal], no_hashing=True)
@@ -1005,11 +827,6 @@ class TestRun:
     def test_a_long_parameter_value_is_truncated_in_the_summary(
         self, tmp_path, gates, live_registry, offline_live_server
     ):
-        """
-        Array-valued parameters would otherwise make the printed table
-        unreadable and bloat the attributes.
-
-        """
         waveform = Parameter(
             "waveform", unit="V", instrument=gates, get_cmd=lambda: np.arange(100)
         )
@@ -1042,11 +859,6 @@ class TestRun:
     def test_an_interrupt_still_exports_what_was_measured(
         self, measurement, gates, signal
     ):
-        """
-        An interrupted run is the common case -- a user stopping a sweep that
-        has already shown what it needed to -- and its data must survive.
-
-        """
         readings = {"count": 0}
 
         def stop_after_two():
@@ -1070,8 +882,7 @@ class TestRun:
         self, measurement, gates
     ):
         readings = iter([1.0, 2.0])
-        # snapshot_get=False so the station snapshot in `run` does not consume a
-        # reading -- only the sweep should draw from the iterator.
+        # Keep the station snapshot from consuming the first sweep reading.
         flaky = Parameter(
             "signal",
             unit="A",
@@ -1089,11 +900,6 @@ class TestRun:
     def test_an_incomplete_sweep_is_reported_rather_than_exported_as_finished(
         self, measurement, gates, signal
     ):
-        """
-        The point count is the one check that a sweep really visited every
-        cell. Without it a silently truncated run looks like a complete one.
-
-        """
         with patch(
             "qanary.measure._stepper", side_effect=lambda dataset, **kw: dataset
         ):
@@ -1115,11 +921,6 @@ class TestRun:
     def test_a_failed_hash_push_does_not_fail_the_measurement(
         self, measurement, gates, signal, caplog
     ):
-        """
-        The data is already on disk by then; an unreachable remote is a
-        deferred push, not a lost run.
-
-        """
         with patch.object(
             Measurement, "_push_gitlab", side_effect=RuntimeError("no network")
         ):
@@ -1145,11 +946,6 @@ class TestRun:
     def test_a_failed_export_skips_hashing(
         self, measurement, gates, signal, monkeypatch, caplog
     ):
-        """
-        There is nothing to hash if nothing was written, and the run should
-        say so rather than dying inside the hash step.
-
-        """
         monkeypatch.setattr(
             xr.Dataset,
             "to_netcdf",
@@ -1180,14 +976,7 @@ class TestRun:
 
 
 class TestRunHelper:
-    """The one-call wrapper around building and running a Measurement."""
-
     def test_requires_a_station(self, gates, signal):
-        """
-        Without a station nothing is snapshotted, and the dataset would record
-        no instrument state at all.
-
-        """
         with pytest.raises(ValueError, match="Station is required"):
             run(
                 Sweep(gates.x, 0.0, 1.0, num=2),
@@ -1237,30 +1026,11 @@ class TestRunHelper:
 
 
 class FakeBufferedSweepNode:
-    """
-    A buffered sweep node: it takes a coordinate array and triggers on it.
-
-    Attributes:
-        runs (int): Number of times the block was started.
-
-    """
-
     def __init__(self) -> None:
         self.toplevel = False
         self.runs = 0
 
     def register_sweep(self, sweep, **kwargs):
-        """
-        Accept the sweep and report its geometry.
-
-        Args:
-            sweep (Sequence): Sweeps this node will drive.
-            **kwargs: Trigger configuration, ignored here.
-
-        Returns:
-            tuple[str, int, float]: Trigger type, point count and spacing.
-
-        """
         return "step", len(sweep[0].values), sweep[0].delay
 
     def run_sweep(self):
@@ -1271,15 +1041,6 @@ class FakeBufferedSweepNode:
 
 
 class FakeBufferedAcquisitionNode:
-    """
-    A buffered acquisition node returning one block per fetch.
-
-    Attributes:
-        block (np.ndarray): What each fetch returns.
-        fetches (int): Number of completed fetches.
-
-    """
-
     def __init__(self, block) -> None:
         self.block = block
         self.fetches = 0
@@ -1296,25 +1057,8 @@ class FakeBufferedAcquisitionNode:
 
 
 class TestBufferedRun:
-    """
-    A measurement whose innermost dimension is swept by the instrument itself.
-
-    The slow sweep is stepped point by point in Python; at each of its points
-    the buffered tree is armed, run once, and read back as a whole block. The
-    dataset therefore has one dimension per slow sweep and one per buffered
-    sweep, and the block has to land on the right slice of it.
-
-    """
-
     @pytest.fixture
     def buffered(self, gates):
-        """
-        A one-deep buffered tree over ``gates.y``, with one dependent.
-
-        Returns:
-            SimpleNamespace: The payload plus the nodes and dependent in it.
-
-        """
         root = FakeBufferedSweepNode()
         reader = FakeBufferedAcquisitionNode(np.arange(4.0))
         dependent = Parameter(
@@ -1343,11 +1087,6 @@ class TestBufferedRun:
         assert exported.sizes == {"x": 2, "y": 4}
 
     def test_each_block_lands_on_its_own_slow_point(self, measurement, gates, buffered):
-        """
-        The fake returns a different block per fetch, so a block written to
-        the wrong slice -- or written twice -- is visible in the values.
-
-        """
         measurement.run(
             [Sweep(gates.x, 0.0, 1.0, num=2), buffered.payload], [], no_hashing=True
         )
@@ -1359,7 +1098,6 @@ class TestBufferedRun:
     def test_repeated_slow_coordinates_keep_each_buffered_block(
         self, measurement, gates, buffered
     ):
-        """Buffered results use positions too when slow labels are repeated."""
         measurement.run(
             [PointSweep(gates.x, [0.0, 1.0, 0.0]), buffered.payload],
             [],
@@ -1374,11 +1112,6 @@ class TestBufferedRun:
     def test_the_tree_is_re_armed_and_re_run_at_every_slow_point(
         self, measurement, gates, buffered
     ):
-        """
-        Buffered instruments can only be read once per arming, so the block
-        has to be set up again at each slow step rather than started once.
-
-        """
         measurement.run(
             [Sweep(gates.x, 0.0, 1.0, num=3), buffered.payload], [], no_hashing=True
         )
@@ -1389,11 +1122,6 @@ class TestBufferedRun:
     def test_the_buffered_sweep_appears_in_the_run_metadata(
         self, measurement, gates, buffered
     ):
-        """
-        The buffered dimension is as much part of the measurement as the slow
-        one, and a dataset that only records the slow sweep is unreadable.
-
-        """
         measurement.run(
             [Sweep(gates.x, 0.0, 1.0, num=2), buffered.payload], [], no_hashing=True
         )
@@ -1416,11 +1144,6 @@ class TestBufferedRun:
     def test_an_interrupt_aborts_the_buffered_instruments(
         self, measurement, gates, buffered
     ):
-        """
-        Instruments left armed keep triggering after the run ends, so Ctrl-C
-        has to reach them.
-
-        """
         aborted = []
         buffered.reader.abort = lambda: aborted.append("reader")
         buffered.root.abort = lambda: aborted.append("root")

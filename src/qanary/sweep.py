@@ -19,8 +19,7 @@ from qanary.buffered.sweep import (
 )
 from qanary.logger import get_logger
 
-# Public API. Everything else in this module is internal; `_stepper` in
-# particular is driven by Measurement.run, not by measurement scripts.
+# `_stepper` and the other underscored helpers are internal.
 __all__ = [
     "Sweep",
     "CircularSweep",
@@ -227,17 +226,14 @@ def _memory_region(dataset: Any, position: Any, flushed: int) -> Any:
     if not dims:
         return None
     outer = dims[0]
-    # Every data variable must start with the same dimension, or one region
-    # cannot describe the change to all of them.
+    # One region can cover every variable only when the outer dimension matches.
     if any(variable.dims[:1] != (outer,) for variable in variables):
         return None
     if outer not in position:
         return None
 
-    # Sweeps are not necessarily monotonic -- CircularSweep is not -- so the row
-    # is found by value rather than by bisection. A value that appears more than
-    # once makes the row ambiguous (and `.loc` would have written every match),
-    # so fall back to rewriting everything rather than guess.
+    # Circular sweeps are not monotonic. Repeated values make the row ambiguous,
+    # so use a full write instead of guessing.
     rows = np.flatnonzero(dataset[outer].values == position[outer])
     if rows.size != 1:
         return None
@@ -464,12 +460,12 @@ class PointSweep:
         start_delay: float = 0.0,
     ) -> None:
         """
-        Define a parameter sweep of a certain list of points that is not necessarily a ramp.
+        Define a sweep over an explicit sequence of setpoints.
 
         Args:
             parameter (Parameter | Sequence[Parameter]): QCoDeS parameter or
                 parameters that share the same setpoints.
-            points (Sequence[int | float]): Arbitrary List of points to sweep through.
+            points (Sequence[int | float]): Setpoints in traversal order.
             delay (float): Dwell time in seconds after each setpoint. Defaults
                 to 0.
             start_delay (float): Delay in seconds after moving to the first
@@ -481,7 +477,7 @@ class PointSweep:
 
         """
 
-        # NOTE: NumPy arrays are not runtime Sequences; pass ``points.tolist()``.
+        # NumPy arrays are not runtime Sequences; callers must pass a list.
         if (
             not isinstance(points, Sequence)
             or isinstance(points, (str, bytes))
@@ -537,7 +533,6 @@ class SegmentedSweep:
 
         """
 
-        # build the three segments of the sweep
         n_p = num / (stop - start + center_width * (factor - 1))
 
         self.segments = [
@@ -569,18 +564,19 @@ class SegmentedSweep:
         self.stop = stop
         self.num = num
 
-        # need to be accsessed in measurement (only dummy)
+        # Measurement expects every sweep to expose these attributes.
         self.delay = 0.0
         self.start_delay = 0.0
 
 
 def _sweep_param(sweep: Sweep = None, override: list = None):
     """
-    Does a single sweep
+    Set one parameter at each point in a sweep.
 
     Args:
-     sweep
-     override: List of parameter, values and delay to manualy do a sweep, and override Sweep
+        sweep (Sweep): Sweep definition. Ignored when *override* is provided.
+        override (list): Optional ``[parameter, values, delay]`` tuple used by
+            parallel sweeps.
     """
     if override:
         param, values, delay = override
@@ -598,16 +594,14 @@ def _sweep_parameters(sweep: Sweep) -> list:
     """
     Return a sweep's parameters as a flat list.
 
-    ``Sweep`` stores a list, but ``CircularSweep`` and ``SegmentedSweep`` store
-    ``np.atleast_1d(parameter)`` -- a numpy array, which is not a
-    ``collections.abc.Sequence``. Testing with ``isinstance(..., Sequence)``
-    therefore skipped those sweeps and ended up calling the array itself.
+    Sweep classes store parameters as either sequences or NumPy arrays. This
+    helper normalizes both forms for callers.
 
     Args:
         sweep (Sweep): Sweep whose parameters are needed.
 
     Returns:
-        list: The sweep's parameters, however the sweep chose to store them.
+        list: Parameters in the sweep.
 
     """
     parameter = sweep.parameter
@@ -635,10 +629,8 @@ def sweeper(sweeps: Sweep | Sequence[Sweep], parallel: bool = False):
         for parameter in _sweep_parameters(sweep):
             override = [parameter, sweep.values, sweep.delay]
             if parallel:
-                # Pass the override through `args` rather than closing over the
-                # loop variable: a lambda would capture `parameter` by
-                # reference, so every thread could sweep whichever parameter the
-                # loop happened to reach first.
+                # Pass the parameter explicitly so the thread does not capture
+                # the loop variable by reference.
                 Thread(target=_sweep_param, kwargs={"override": override}).start()
             else:
                 _sweep_param(override=override)
@@ -698,25 +690,26 @@ def _stepper(
     sweep_index_cache: Optional[list] = None,
 ):
     """
-    Recursive _stepper function for generating the for loops required to sweep measurements
+    Run nested sweeps and checkpoint acquired data.
 
     Args:
-        dataset: xarray dataset to store the data
-        data_location: Location to store the data
-        depth: Depth of the nested for loops to be emulated
-        sweeps: List of sweeps for each for loop (slow sweeps only; buffered sweeps handled separately)
-        independents: List of independent parameters that are to be plotted, with the measured parameters
-        dependents: List of dependent parameters (QCoDeS parameters)
-        sweep_cache: Cache of the last sweep parameters (one slot per entry in `independents`)
-        save_interval: Time interval to save the data
-        interrupt: Boolean to enable custom stops
-        parallel_sweep: Boolean to enable parallel parameter sweeps
-        memory_store: Optional zarr store that keeps the live dataset in memory
-        disk_store: Optional zarr store used for persisting to disk
-        nc_snapshot_path: Optional netcdf path for best-effort in-run snapshots
-        verbose: Enables verbose logging of persistence actions when True
-        buffered_sweep: Optional buffered sweep tree describing fast, instrument-internal sweeps
-        sweep_index_cache: Optional list of indices for the current sweep point in each sweep, used for progress tracking
+        dataset: Preallocated xarray dataset to fill.
+        data_location: Fallback checkpoint path.
+        depth: Current depth in the nested slow sweeps.
+        sweeps: Slow sweeps in outer-to-inner order.
+        independents: Swept parameters used as dataset coordinates.
+        dependents: QCoDeS parameters read at each point.
+        sweep_cache: Current coordinate value for each independent.
+        bar: Progress bar updated after each point.
+        save_interval: Minimum seconds between checkpoints.
+        interrupt: Callback that requests an early stop when true.
+        parallel_sweep: Set parameters on separate threads.
+        memory_store: In-memory Zarr store used for live data.
+        disk_store: Zarr store used for recovery checkpoints.
+        nc_snapshot_path: Optional path for best-effort netCDF snapshots.
+        verbose: Log checkpoint operations.
+        buffered_sweep: Optional tree of hardware-buffered sweeps.
+        sweep_index_cache: Current positional index for each independent.
     """
     global last_save
     depth = int(depth)
@@ -724,8 +717,8 @@ def _stepper(
     if sweep_index_cache is None:
         sweep_index_cache = [None] * len(independents)
 
-    # NOTE: Measurement.run supplies buffered trees separately; legacy direct
-    # callers must provide ordinary sweep objects here until normalization below.
+    # Measurement.run supplies buffered trees separately. Keep support for
+    # legacy direct callers that pass one in `sweeps`.
     has_duplicate_sweep_values = any(
         len(sw.values) != len(set(sw.values)) for sw in sweeps
     )
@@ -871,13 +864,11 @@ def _stepper(
                     exc,
                 )
 
-    # Where this level last acquired a point. The checkpoint that runs on the
-    # way out has no `slow_indexers` in scope, and without a position it would
-    # rewrite the whole store -- once per recursive call.
+    # Keep the last position available for the final checkpoint at this depth.
     last_position: dict = {}
 
     def _checkpoint(position=None):
-        """Persist live state without letting a transient file lock skip sweep points."""
+        """Persist live state without dropping points during a file lock."""
         _persist_memory(position)
         try:
             _persist_disk()
@@ -910,8 +901,7 @@ def _stepper(
         progress.start()
 
         try:
-            # Instrument access stays on the caller thread. Only the estimated
-            # tqdm updates happen on _BufferedProgress's background thread.
+            # Only estimated progress updates run in the background.
             toplevel = _arm_instruments(buffered_sweep)
             toplevel.run_sweep()
 
@@ -919,8 +909,7 @@ def _stepper(
             _fetch_results(buffered_sweep, state=results_state)
             buffered_results_tree = results_state.get("results_tree", {})
 
-            # Each dependent DataArray has [slow dims..., buffered dims...].
-            # Selecting only slow dimensions assigns the complete fast block.
+            # Selecting the slow dimensions assigns the complete buffered block.
             for dep, entry in buffered_results_tree.items():
                 arr = dataset.data_vars[f"{dep.name}"]
                 _assign(
@@ -941,11 +930,7 @@ def _stepper(
             slow_indexers = {}
             slow_position_indexers = {}
 
-            # `dependents` never contains buffered dependents -- those are
-            # described by the buffered tree and written by _run_buffered_block
-            # below -- so every entry here is read directly. A guard used to sit
-            # in this loop testing membership of a set that was initialised
-            # empty immediately above it, so it could never fire.
+            # Buffered dependents are handled separately by `_run_buffered_block`.
             for dependent in dependents:
                 arr = dataset.data_vars[f"{dependent.name}"]
                 _assign(
@@ -1011,12 +996,8 @@ def _stepper(
                 )
 
             elif depth == 1:
-                # At the deepest level: evaluate dependents and (optionally)
-                # run a buffered sweep tree.
-
-                # Build indexers for the "slow" dimensions from sweeps.
-                # We deliberately ignore any buffered dims here; they are
-                # spanned by the buffered sweep itself.
+                # Build indexers for slow dimensions; the buffered sweep owns
+                # its own dimensions.
                 slow_indexers = {}
                 slow_position_indexers = {}
 
@@ -1032,11 +1013,7 @@ def _stepper(
                         slow_indexers[p.name] = sweep_cache[cache_idx]
                         slow_position_indexers[p.name] = sweep_index_cache[cache_idx]
 
-                # `dependents` never contains buffered dependents -- those are
-                # described by the buffered tree and written by _run_buffered_block
-                # below -- so every entry here is read directly. A guard used to sit
-                # in this loop testing membership of a set that was initialised
-                # empty immediately above it, so it could never fire.
+                # Buffered dependents are handled separately below.
                 for dependent in dependents:
                     arr = dataset.data_vars[f"{dependent.name}"]
                     _assign(
@@ -1047,8 +1024,7 @@ def _stepper(
                     )
 
                 if buffered_sweep is not None:
-                    # Re-arm instruments for this buffered tree at every
-                    # slow-step: instruments can only be read once after a sweep.
+                    # Buffered instruments must be re-armed at each slow point.
                     _run_buffered_block(slow_indexers, slow_position_indexers)
                 else:
                     bar.update(1)
@@ -1057,10 +1033,9 @@ def _stepper(
 
                 if last_save == 0 or (time() - last_save > save_interval):
                     last_save = time()
-                    # NOTE: Writing dataset to MemoryStore as well as DiskStore
                     _checkpoint(slow_indexers)
     except (Exception, KeyboardInterrupt):
-        # Preserve the latest acquired data, then let the caller handle the interruption/failure.
+        # Preserve acquired data, then re-raise the original failure.
         try:
             _persist_memory()
         except Exception:
