@@ -2,6 +2,44 @@
 
 <!-- version list -->
 
+## v0.13.0 (2026-11-10)
+
+### Continuous Integration
+
+- Migrate Zenodo archiving to the records API
+  ([`b49b521`](https://gitlab.com/squad-lab/qanary/-/commit/b49b5219344e346ebd4cac9945a144a1023dea2c))
+
+### Documentation
+
+- Add a legal notice to the documentation site
+  ([`4b205c8`](https://gitlab.com/squad-lab/qanary/-/commit/4b205c8fd3a333cafe36d1a40fc8bca1ec5a71d2))
+
+- Add page descriptions and limit generated summaries
+  ([`b8bdd5f`](https://gitlab.com/squad-lab/qanary/-/commit/b8bdd5f9e3a5900ef3070a071ab6653d40e5a75d))
+
+- Add the Zenodo DOI and Vincent Mourik to project metadata
+  ([`bd526bf`](https://gitlab.com/squad-lab/qanary/-/commit/bd526bfb527aa3a152e205c3f32cd417b6be729d))
+
+- Tighten prose in docs, comments and docstrings
+  ([`d44f1ea`](https://gitlab.com/squad-lab/qanary/-/commit/d44f1eae1a984fa02ce1c73d203f318523cdcfa0))
+
+### Features
+
+- Make instrument drivers optional
+  ([`b822374`](https://gitlab.com/squad-lab/qanary/-/commit/b82237429f2f137bd0686da81232b8d142470d3c))
+
+- **runtime**: Support Python 3.14
+  ([`483313a`](https://gitlab.com/squad-lab/qanary/-/commit/483313ab8a158fc3c58a477bf3403c8ba6e19970))
+
+- **storage**: Move to Zarr 3
+  ([`5c0587d`](https://gitlab.com/squad-lab/qanary/-/commit/5c0587de5e21a47b6fe7e639722aea0b74dfda19))
+
+### Testing
+
+- **storage**: Cover datasets written by Qanary 0.12.3
+  ([`09c1925`](https://gitlab.com/squad-lab/qanary/-/commit/09c1925a2965c6eff00f248cec205b9c191d56ad))
+
+
 ## v0.12.3 (2026-10-21)
 
 ### Bug Fixes

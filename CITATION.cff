@@ -28,7 +28,7 @@ url: "https://qanary.squad-lab.org"
 doi: 10.5281/zenodo.23536660
 license: AGPL-3.0-or-later
 # Set by semantic-release on every release.
-version: 0.12.3
+version: 0.13.0
 keywords:
   - QCoDeS
   - measurement

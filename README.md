@@ -127,7 +127,7 @@ Please cite Qanary when using it in your work:
   author       = {Anupam, Spandan and Schreibing, Simon and Shivottam, Jyotirmaya and Mourik, Vincent},
   title        = {Qanary: Sweep and measurement utilities for QCoDeS},
   year         = {2026},
-  note         = {Version 0.12.3, software},
+  note         = {Version 0.13.0, software},
   publisher    = {Zenodo},
   doi          = {10.5281/zenodo.23536660},
   url          = {https://doi.org/10.5281/zenodo.23536660}
