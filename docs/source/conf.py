@@ -109,7 +109,7 @@ def _structured_data() -> str:
         "url": html_baseurl,
         "codeRepository": cff["repository-code"],
         "programmingLanguage": "Python",
-        "runtimePlatform": "Python 3.13",
+        "runtimePlatform": "Python 3.14",
         "license": "https://spdx.org/licenses/AGPL-3.0-or-later.html",
         "version": release,
         "keywords": cff.get("keywords", []),

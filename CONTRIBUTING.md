@@ -1,16 +1,20 @@
 # Contributing to Qanary
 
-Thank you for contributing to Qanary. Qanary replaces QCoDeS's measurement
-layer: you declare the parameters to sweep and the quantities to record, and it
-walks the sweep, stores the result as an `xarray.Dataset`, and publishes it live
-to [Qimchi](https://gitlab.com/squad-lab/qimchi). Contributions may include
+Thank you for contributing to Qanary. Qanary provides a measurement layer on
+top of QCoDeS: it runs parameter sweeps, stores results as an `xarray.Dataset`,
+and publishes live data to [Qimchi](https://gitlab.com/squad-lab/qimchi). Contributions may include
 measurement features, support for buffered acquisition on new instruments, bug
 fixes, tests, tutorials, and documentation.
 
 ## Development
 
-Qanary requires Python 3.13 and uses [uv](https://docs.astral.sh/uv/) for
-dependency management.
+Qanary uses [uv](https://docs.astral.sh/uv/) for dependency management.
+
+### Python support policy
+
+We support the second-newest stable Python feature release. This balances timely
+security and bug-fix support with enough time for our dependencies to stabilize
+on each new Python version.
 
 ### Setup
 
@@ -31,20 +35,21 @@ uv run pytest
 uv run pre-commit run --all-files
 ```
 
-The first runs the test suite. The second applies Ruff's lint fixes and its formatter to the whole repository.
+The first command runs the tests. The second applies Ruff's lint fixes and
+formatter across the repository.
 
 ### Conventions
 
-Qanary has a few rules that a merge request is reviewed against:
+Merge requests should follow these conventions:
 
 - **Public and internal API.** Every public module declares `__all__`; anything
   else carries a leading underscore and is internal, even where one module
   imports it from another.
 - **Docstrings.** Google-style, with typed `Args:`, `Returns:` and `Raises:`
-  sections where they apply. Tests are exempt.
+  sections where useful. Tests do not need docstrings if self-explanatory; otherwise, please add them.
 - **Docs build.** The API reference is generated from those docstrings, so a new
-  public callable needs no docs edit -- but build the docs after a substantial
-  docstring change, because malformed ones surface only as Sphinx warnings.
+  public callable needs no separate API page. Build the docs after substantial
+  docstring changes.
 
   ```console
   uv sync --extra dev --group docs
@@ -53,15 +58,19 @@ Qanary has a few rules that a merge request is reviewed against:
 
   Sync both the extra and the group.
 
-Each of these is set out in full, with the reasoning and the worked examples, on
-the [Development](https://qanary.squad-lab.org/development.html) page. Read it
-before your first substantial change.
+The [Development](https://qanary.squad-lab.org/development.html) page explains
+these conventions with examples. Read it
+before making changes.
 
 ## Test strategy
 
-The pytest suite in `tests/` covers sweeps, parameters, measurements, data storage, checkpoints, logging and the live registry. CI tests Linux and Windows to cover differences in Zarr storage and file locking. Both must pass before merging. Every pipeline reports coverage.
+The pytest suite in `tests/` covers sweeps, parameters, measurements, storage, checkpoints,
+logging, and the live registry. CI runs Python 3.13 and 3.14 on Linux, plus
+Python 3.14 on Windows for platform-specific storage and file-locking behavior.
+All jobs must pass before merging.
 
-Tests use dummy instruments because CI has no measurement hardware. The examples require real instruments, so `tests/test_examples.py` checks their syntax and imports without running them.
+Tests must use dummy instruments because CI has no measurement hardware. The one exception is `tests/test_examples.py`. As examples require real instruments, it only checks their
+syntax and imports without actually running them.
 
 Include a regression test with each bug fix and tests for each new feature.
 
@@ -74,7 +83,7 @@ first.
 
 A bug report should give the Qanary and QCoDeS versions, the instruments
 involved and how they are connected, and the smallest sweep that reproduces the
-problem (a Minimal Working Example). Include the traceback, and say whether the dataset was written.
+problem (an MWE or Minimal Working Example). Include the traceback and mention whether Qanary wrote a dataset.
 
 ## Merge requests
 
@@ -89,11 +98,11 @@ without hardware.
 Releases are cut from the commit messages, so they follow
 [Conventional Commits](https://www.conventionalcommits.org/):
 - `fix:` for a patch release,
-- `feat:` for a minor one, and,
+- `feat:` for a minor one, and
 - a `BREAKING CHANGE:` footer for a major one.
  
-Anything else -- `docs:`, `test:`, `chore:`, `refactor:` -- is a valid
-subject that does not lead to a release. A change that should ship needs the right prefix.
+Other prefixes such as `docs:`, `test:`, `chore:`, and `refactor:` do not create
+a release. Use `fix:` or `feat:` for changes that should ship.
 
 Do not edit the version in `pyproject.toml`, and do not write an Unreleased
 section in `CHANGELOG.md` by hand: CI owns the version, and semantic-release

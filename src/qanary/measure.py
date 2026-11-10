@@ -25,7 +25,6 @@ from qimchi_connect import (
 )
 from tqdm import tqdm
 
-# Local imports
 from qanary.buffered.sweep import (
     _abort_instruments,
     _buffered_sweep_progress_info,
@@ -35,8 +34,10 @@ from qanary.dataset import convert as _convert_live_store
 from qanary.logger import get_logger
 from qanary.parameters import MultiChannelParameter, ParameterMixin
 from qanary.sweep import (
+    ZARR_FORMAT,
     CircularSweep,
     Sweep,
+    _copy_store,
     _stepper,
     _sweep_parameters,
     reset_disk_persist_cache,
@@ -55,13 +56,10 @@ logger = get_logger(__name__)
 
 def _live_store_root() -> Path:
     """
-    Return the directory holding live Zarr stores, creating it if needed.
+    Return the directory used for live Zarr checkpoints.
 
-    Each store is a temporary disk checkpoint for a running measurement and a
-    fallback for live consumers. It is removed after a successful netCDF
-    export.
-
-    ``QANARY_HOME`` overrides the default ``~/.qanary`` application directory.
+    The directory is created under ``QANARY_HOME``, or under ``~/.qanary``
+    when the environment variable is unset.
 
     Returns:
         Path: Directory for live Zarr stores.
@@ -75,7 +73,7 @@ def _live_store_root() -> Path:
 
 def _target_marker(store_path: Path) -> Path:
     """
-    Return the sidecar file that records a live store's final netCDF path.
+    Return the sidecar that records a live store's netCDF destination.
 
     Args:
         store_path (Path): The live Zarr store.
@@ -89,16 +87,14 @@ def _target_marker(store_path: Path) -> Path:
 
 def _recover_orphaned_store(store_path: Path) -> bool:
     """
-    Convert an abandoned live store into the netCDF file it was headed for.
+    Recover an abandoned live store to its intended netCDF file.
 
     Args:
         store_path (Path): Live Zarr store of a measurement that never
             finalised.
 
     Returns:
-        bool: Whether conversion produced the intended netCDF file. A false
-            result can mean that the target already exists, no target was
-            recorded, or recovery failed.
+        bool: True if recovery created the intended netCDF file.
 
     """
     marker = _target_marker(store_path)
@@ -133,18 +129,12 @@ def _recover_orphaned_store(store_path: Path) -> bool:
 
 def _prune_orphaned_live_stores(minimum_age_seconds: float = 3600.0) -> None:
     """
-    Recover live Zarr stores left behind by measurements that are no longer live.
+    Recover checkpoints that no longer belong to a live measurement.
 
-    An old store whose measurement is absent from the live registry is treated
-    as abandoned, usually because its process ended before finalisation. The
-    store may contain the only copy of the acquired data, so Qanary first tries
-    to recover it to its intended netCDF file. If conversion fails after the
-    store has been moved beside that target, the staged Zarr data is preserved
-    for manual recovery. An unrecoverable scratch store is otherwise removed.
-
-    New stores are left alone because a producer may create its store before
-    publishing its discovery record. This grace period prevents a concurrent
-    measurement from being mistaken for an abandoned one.
+    Recent stores are ignored because a measurement may create its checkpoint
+    before registering itself. Older orphaned stores are converted to their
+    recorded netCDF destination. If conversion fails, recoverable data is kept
+    beside that destination for manual recovery.
 
     Args:
         minimum_age_seconds (float): Leave stores younger than this alone.
@@ -178,26 +168,24 @@ def _prune_orphaned_live_stores(minimum_age_seconds: float = 3600.0) -> None:
 
 
 def _register_memory_store(
-    measurement_id: str, store: zarr.MemoryStore, disk_path: Optional[str] = None
+    measurement_id: str, store: dict, disk_path: Optional[str] = None
 ) -> int:
     """
-    Publish a memory store as a live measurement.
+    Publish an in-memory Zarr store through Qimchi-Connect.
 
     Args:
         measurement_id (str): Stable identifier for the active measurement.
-        store (zarr.MemoryStore): In-memory Zarr store containing live data.
+        store (dict): In-memory Zarr store containing live data.
         disk_path (Optional[str]): Persisted fallback location advertised to
             consumers.
 
     Returns:
-        int: Port serving the live measurement, or zero if publication failed.
+        int: Serving port, or 0 if publication failed.
 
     """
     _prune_orphaned_live_stores()
 
-    # One call sweeps stale rows, starts the server if it is not already up,
-    # publishes the snapshot callback, and writes the discovery row Qimchi
-    # reads. It also tracks the publication, so there is nothing to keep here.
+    # Registration starts the shared server and writes Qimchi's discovery row.
     try:
         registration = register_live_measurement(
             measurement_id,
@@ -216,14 +204,14 @@ def _register_memory_store(
 
 def _find_available_port(start_port: int, max_attempts: int = 100) -> int:
     """
-    Find an available local TCP port in a bounded range.
+    Find an available local TCP port.
 
     Args:
         start_port (int): First port to probe.
         max_attempts (int): Number of consecutive ports to probe.
 
     Returns:
-        int: First available port, or *start_port* if every probe fails.
+        int: First available port, or ``start_port`` if none can be found.
 
     """
     for port in range(start_port, start_port + max_attempts):
@@ -233,25 +221,20 @@ def _find_available_port(start_port: int, max_attempts: int = 100) -> int:
                 return port
             except OSError:
                 continue
-    # Fallback to start_port if none found
     return start_port
 
 
 def _unregister_memory_store(measurement_id: str) -> None:
     """
-    Stop publishing a live measurement through Qimchi-Connect.
+    Stop publishing a measurement through Qimchi-Connect.
 
-    Closing the publication also removes its snapshot provider and marks its
-    discovery record as ended. Failures are logged so measurement finalisation
-    is not masked by cleanup errors.
+    Cleanup failures are logged rather than allowed to mask finalization errors.
 
     Args:
         measurement_id (str): Identifier of the publication to close.
 
     """
     try:
-        # Stops advertising the measurement, drops its cached snapshot, and
-        # marks the discovery record ended.
         if close_live_measurement(measurement_id):
             logger.info(f"Stopped publishing live measurement {measurement_id}")
     except Exception as e:
@@ -263,12 +246,10 @@ bar = None
 
 def _sanitize_for_json(obj):
     """
-    Recursively convert snapshot values to JSON-serializable objects.
+    Convert snapshot values to JSON-compatible objects.
 
-    Instrument snapshots may contain driver-specific context objects in
-    parameter caches (for example ``QDac2Trigger_Context`` after a sweep).
-    Preserve ordinary JSON values and stringify unsupported objects rather
-    than failing the whole measurement metadata export.
+    Unsupported driver objects are represented as strings so one cached value
+    cannot prevent the rest of the snapshot from being stored.
 
     Args:
         obj: Snapshot value to sanitize.
@@ -299,7 +280,7 @@ def _sanitize_for_json(obj):
 
 class Station:
     """
-    Collection of instruments and named parameters recorded by a measurement.
+    Instruments and named parameters included in a measurement snapshot.
 
     Args:
         name (str): Human-readable station name.
@@ -322,13 +303,13 @@ class Station:
         """
         Add a named parameter to the station.
 
-        If override=True, an existing station parameter with the same name is
+        If ``override`` is true, an existing parameter with the same name is
         removed before the replacement is constructed.
         """
 
         params = tuple(param) if isinstance(param, Sequence) else (param,)
 
-        # Find existing station parameter BEFORE constructing the new parameter.
+        # Check the name before constructing a wrapper with side effects.
         existing_index = None
         existing = None
 
@@ -346,7 +327,6 @@ class Station:
 
             self._remove_from_instrument(existing)
 
-        # Only now construct the new parameter.
         if len(params) > 1:
             param_type = param_type if param_type is not None else "multi_channel_gate"
 
@@ -376,8 +356,7 @@ class Station:
 
     def remove_parameter(self, pm):
         """
-        Remove a previously registered parameter from the station and, if it is
-        registered there, from its underlying QCoDeS instrument.
+        Remove a parameter from the station and its QCoDeS instrument.
         """
 
         if pm not in self.parameters:
@@ -400,7 +379,7 @@ class Station:
 
 class Measurement:
     """
-    Configure, acquire, publish, and persist one Qanary measurement.
+    Configure and run a Qanary measurement.
 
     """
 
@@ -415,11 +394,11 @@ class Measurement:
         metadata: dict,
         fridge_name: str = "",
         save_interval: float = 0.1,
-        nc_snapshot_during_run: bool = False,  # @Spandan - edit as needed
+        nc_snapshot_during_run: bool = False,
         git_repo: str = "~/.measurement-hashes",
     ):
         """
-        Create a measurement and reserve its output paths.
+        Set up a measurement and reserve its output paths.
 
         Args:
             wafer_id (str): Wafer identifier used in the output path.
@@ -439,11 +418,9 @@ class Measurement:
                 Defaults to ``"~/.measurement-hashes"``.
 
         Notes:
-            Completed data is written below
+            Completed data is stored under
             ``data_location/wafer_id/device_type/sample_name/experiment_name``.
-            Live recovery checkpoints are temporary and stored under the
-            Qanary application directory (``QANARY_HOME``, ``~/.qanary`` by
-            default).
+            Temporary checkpoints live under ``QANARY_HOME`` or ``~/.qanary``.
 
         """
         self.wafer_id = wafer_id
@@ -466,7 +443,7 @@ class Measurement:
             self.git_repo = os.path.expanduser(f"{git_repo}-{fridge_name}")
 
         data_files = os.listdir(self.datalogging)
-        # Keeping .zarr for backward compatibility, but we will migrate to .nc in the future
+        # Count legacy Zarr outputs as well as current netCDF files.
         data_files = [
             int(file.split("-")[0])
             for file in data_files
@@ -493,7 +470,7 @@ class Measurement:
 
     def get_installed_packages(self):
         """
-        Return installed Python distributions as requirements text.
+        List installed Python distributions as requirements text.
 
         Returns:
             str: ``name==version`` lines suitable for dataset metadata, or an
@@ -520,7 +497,7 @@ class Measurement:
 
     def _make_dataarray(self, sweeps, dependent):
         """
-        Preallocate a NaN-filled data array for one dependent parameter.
+        Create an empty data array for one dependent parameter.
 
         Args:
             sweeps (Sequence[Sweep]): Sweeps defining the array dimensions and
@@ -542,8 +519,6 @@ class Measurement:
                 "unit": dependent.unit,
                 "label": dependent.label,
                 "instrument": dependent.instrument.name,
-                # snapshots included in the gloabl metadata
-                # "instrument_snapshot": str(dependent.instrument.snapshot()),
             },
         )
         for sweep in sweeps:
@@ -559,7 +534,7 @@ class Measurement:
 
     def _make_dataset(self, sweeps: Sequence[Union[Sweep, dict]], dependents: list):
         """
-        Preallocate the measurement dataset and its acquisition metadata.
+        Create an empty measurement dataset and its acquisition metadata.
 
         Args:
             sweeps (Sequence[Sweep | dict]): Slow sweeps, optionally followed by
@@ -604,7 +579,6 @@ class Measurement:
             "Sample Name": self.sample_name,
             "Experiment Name": self.experiment,
             "Requirements": self.get_installed_packages(),
-            # "Code Archive": str(code_archive),
         }
 
         data_vars = {
@@ -618,7 +592,6 @@ class Measurement:
             for param in sweep.parameter
         }
 
-        # Handle buffered dependents
         if buffered_sweep:
             for buffered_dependent in self.buffered_dependents_tree:
                 sweeps_full = (
@@ -642,10 +615,10 @@ class Measurement:
 
     def _push_gitlab(self, dataset, data_hash):
         """
-        Record a measurement hash and metadata in the remote hash repository.
+        Commit a measurement hash and metadata to the hash repository.
 
-        The record is committed on the cryostat branch and pushed to the
-        configured Git repository. The measurement data itself is not pushed.
+        The commit is made on the cryostat branch. Measurement data is not
+        included.
 
         Args:
             dataset (xr.Dataset): Final dataset whose attributes are recorded.
@@ -723,7 +696,7 @@ class Measurement:
 
     def _compute_data_hash(self) -> str:
         """
-        Compute the SHA-256 digest of the persisted measurement output.
+        Compute the SHA-256 digest of the saved measurement.
 
         Legacy directory outputs are hashed recursively; current netCDF outputs
         are read in chunks.
@@ -745,7 +718,7 @@ class Measurement:
 
     def _rescue_live_store(self) -> bool:
         """
-        Preserve a live store whose measurement failed to export.
+        Preserve the live store after a failed export.
 
         Returns:
             bool: Whether the conversion produced ``self.data`` after all, so
@@ -794,14 +767,12 @@ class Measurement:
         self, dataset: Optional[xr.Dataset] = None, verbose: bool = False
     ) -> Optional[xr.Dataset]:
         """
-        Export the latest dataset to netCDF and remove temporary live artifacts.
+        Export the latest dataset to netCDF and remove live artifacts.
 
-        The supplied dataset is preferred, followed by the current in-memory
-        dataset and then the disk checkpoint. Export uses a temporary file and
-        atomic replacement. If that fails, the live Zarr store is moved beside
-        the intended target and converted there. Successful export updates the
-        path advertised by Qimchi-Connect before removing the live store and its
-        recovery marker.
+        Data is taken from the supplied dataset, then the in-memory dataset,
+        then the disk checkpoint. The export is written to a temporary file and
+        moved into place atomically. If that fails, the Zarr store is preserved
+        beside the intended output for recovery.
 
         Args:
             dataset (Optional[xr.Dataset]): Dataset to persist. If omitted, use
@@ -813,8 +784,7 @@ class Measurement:
                 could be completed.
 
         """
-        # self.arr is the authoritative, most recent in-memory state during a
-        # run. The disk Zarr checkpoint can lag behind after a transient lock.
+        # The in-memory dataset can be newer than a temporarily locked checkpoint.
         export_dataset = dataset if dataset is not None else self.arr
 
         if export_dataset is None:
@@ -871,7 +841,7 @@ class Measurement:
 
     def _print_table(self, snapshot_table, headers):
         """
-        Print aligned measurement metadata rows.
+        Print measurement metadata as an aligned table.
 
         Args:
             snapshot_table (list[list]): Rows to print.
@@ -879,24 +849,20 @@ class Measurement:
 
         """
 
-        # Convert everything to string
         table = [[str(cell) for cell in row] for row in snapshot_table]
 
-        # Compute column widths
         ncols = len(headers)
         col_widths = []
         for col in range(ncols):
             max_cell = max(len(row[col]) for row in table)
             col_widths.append(max(max_cell, len(headers[col])))
 
-        # Helpers
         def fmt_row(row):
             return "  ".join(row[i].ljust(col_widths[i]) for i in range(ncols))
 
         def sep():
             return "  ".join("-" * w for w in col_widths)
 
-        # Print table
         print(fmt_row(headers))
         print(sep())
         for row in table:
@@ -952,7 +918,7 @@ class Measurement:
         else:
             buffered_sweep = None
 
-        # Get instrument snapshots for metadata
+        # Snapshot instruments before the sweep changes their state.
         independents = []
         instruments_snapshot = {
             inst.name: inst.snapshot() for inst in self.station.instruments
@@ -976,7 +942,7 @@ class Measurement:
                 "label": param.label,
             }
 
-        # Get sweep metadata for pretty printed table
+        # Include sweep settings in the run summary.
         def _fmt_range(values, ndp: int = 3) -> str:
             return f"{values[0]:.{ndp}e} to {values[-1]:.{ndp}e}"
 
@@ -1055,19 +1021,17 @@ class Measurement:
             "Extra Metadata": json.dumps(self.extra_metadata),
         }
 
-        # make empty dataset with global dimensions and buffered dimensions
+        # Allocate slow and buffered dimensions before acquisition.
         self.arr = self._make_dataset(sweeps_complete, dependents)
 
         self.arr.attrs.update(meta)
-        self.memory_store = zarr.MemoryStore()
-        self.disk_store = zarr.DirectoryStore(self.live_data)
-        self.arr.to_zarr(store=self.memory_store, mode="w")
+        # A dict gives checkpoints direct access to Zarr's encoded keys.
+        self.memory_store = {}
+        self.disk_store = zarr.storage.LocalStore(self.live_data)
+        self.arr.to_zarr(store=self.memory_store, mode="w", zarr_format=ZARR_FORMAT)
         if verbose:
             logger.info("[measurement] Seeded dataset to in-memory store")
-        zarr.copy_store(self.memory_store, self.disk_store, if_exists="replace")
-        # Checkpoints track what they have already written; this seeding copy
-        # bypasses that, so start the run from a known-empty cache.
-        reset_disk_persist_cache(self.disk_store)
+        _copy_store(self.memory_store, self.disk_store)
         if verbose:
             logger.info("[measurement] Seeded dataset to disk .zarr store")
         _register_memory_store(
@@ -1075,7 +1039,6 @@ class Measurement:
         )
         logger.debug(f"Live Memory Location: memory://{self.id}")
 
-        # Do the measurement
         dataset: Optional[xr.Dataset] = None
         finalized = False
         try:

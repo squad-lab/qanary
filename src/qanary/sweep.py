@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import os
 from math import isfinite
@@ -7,8 +8,9 @@ from time import monotonic, sleep, time
 from typing import Any, Callable, Optional, Sequence
 
 import numpy as np
-import zarr
 from qcodes.parameters import Parameter
+from zarr.api.asynchronous import open_array
+from zarr.core.sync import sync
 
 from qanary.buffered.sweep import (
     _arm_instruments,
@@ -17,8 +19,7 @@ from qanary.buffered.sweep import (
 )
 from qanary.logger import get_logger
 
-# Public API. Everything else in this module is internal; `_stepper` in
-# particular is driven by Measurement.run, not by measurement scripts.
+# `_stepper` and the other underscored helpers are internal.
 __all__ = [
     "Sweep",
     "CircularSweep",
@@ -36,32 +37,27 @@ last_save = 0
 DISK_PERSIST_ATTEMPTS = 6
 DISK_PERSIST_RETRY_DELAY = 0.2
 
-# Digests of the bytes last written to each disk-store key, so a checkpoint only
-# rewrites what actually changed.
-#
-# A checkpoint used to copy every key in the store. That is dominated by per-file
-# I/O rather than data volume -- roughly 0.85 ms per key on Windows -- while only
-# the chunks just acquired actually differ. Group and array metadata, the
-# consolidated .zmetadata, the attributes blob and every coordinate array are
-# rewritten byte-for-byte identically each time.
-#
-# Keyed by store path because _stepper() recurses and each level builds its own
-# closures, so this cannot live in one.
+# Keep live checkpoints compatible with stores written before Zarr 3 support.
+ZARR_FORMAT = 2
+
+# Cache the last digest of each disk-store key so checkpoints only write changes.
+# The store path is stable across recursive `_stepper` calls.
 _DISK_KEY_DIGESTS: dict[str, dict[str, bytes]] = {}
 
 
-def _key_digest(value: bytes) -> bytes:
+def _key_digest(value: Any) -> bytes:
     """
     Return a short digest of one store value.
 
     Args:
-        value (bytes): Encoded chunk or metadata value.
+        value (Any): Encoded Zarr buffer.
 
     Returns:
         bytes: Digest used to detect changes between checkpoints.
 
     """
-    return hashlib.blake2b(value, digest_size=16).digest()
+    data = np.ascontiguousarray(value.as_numpy_array())
+    return hashlib.blake2b(data, digest_size=16).digest()
 
 
 def _store_cache_key(store: Any) -> str:
@@ -72,11 +68,10 @@ def _store_cache_key(store: Any) -> str:
         store (Any): Store object, or a path standing in for one.
 
     Returns:
-        str: Cache key. Zarr normalizes ``DirectoryStore.path``, so the store's
-            own attribute is used rather than whatever path was passed to it.
+        str: The normalized ``LocalStore`` root, or the string form of *store*.
 
     """
-    return str(getattr(store, "path", store))
+    return str(getattr(store, "root", store))
 
 
 def reset_disk_persist_cache(store: Any = None) -> None:
@@ -95,49 +90,115 @@ def reset_disk_persist_cache(store: Any = None) -> None:
         _DISK_KEY_DIGESTS.pop(_store_cache_key(store), None)
 
 
-def _copy_changed_keys(source: Any, target: Any, store_path: str) -> int:
+def _copy_changed_keys(source: dict, target: Any, store_path: str) -> int:
     """
-    Copy only the keys whose contents changed since the last checkpoint.
-
-    The result on disk is identical to copying every key, because a key is
-    skipped only when its bytes are unchanged.
+    Copy keys that changed since the last checkpoint.
 
     Args:
-        source (Any): Store to read from, typically the in-memory store.
-        target (Any): Store to write to, typically the on-disk store.
+        source (dict): In-memory store populated by Zarr.
+        target (Any): Zarr store to write to, typically a ``LocalStore``.
         store_path (str): Identifies ``target`` in the digest cache.
 
     Returns:
-        int: Number of keys actually written.
+        int: Number of keys written.
 
     Raises:
-        PermissionError: If the target store is locked, as before.
+        PermissionError: If the target store is locked.
 
     """
     digests = _DISK_KEY_DIGESTS.setdefault(store_path, {})
+    current = [(key, value, _key_digest(value)) for key, value in list(source.items())]
+    return sync(_write_changed_keys(current, target, digests))
 
-    # If the store was removed or replaced underneath us, what we think is on
-    # disk is worthless -- rewrite everything.
-    if digests and ".zgroup" not in target:
+
+async def _write_changed_keys(
+    current: list, target: Any, digests: dict[str, bytes]
+) -> int:
+    """
+    Write the keys whose digest differs from the one last written.
+
+    Args:
+        current (list): ``(key, value, digest)`` for every key of the source.
+        target (Any): Zarr store to write to.
+        digests (dict[str, bytes]): Digests last written to ``target``,
+            updated as writes land.
+
+    Returns:
+        int: Number of keys written.
+
+    """
+    # A missing group means the cached digests no longer describe this store.
+    if digests and not await target.exists(".zgroup"):
         digests.clear()
 
-    written = 0
-    for key in list(source.keys()):
-        value = source[key]
-        digest = _key_digest(value)
-        if digests.get(key) == digest:
-            continue
-        # Record only after the write lands, so a lock leaves the key dirty and
-        # the next attempt retries it.
-        target[key] = value
+    async def write(key: str, value: Any, digest: bytes) -> None:
+        await target.set(key, value)
+        # Update the digest only after a successful write so failures are retried.
         digests[key] = digest
-        written += 1
-    return written
+
+    changed = [item for item in current if digests.get(item[0]) != item[2]]
+    await _gather_all([write(*item) for item in changed])
+    return len(changed)
 
 
-# Rows of each in-memory store already flushed, keyed by store identity. As with
-# the disk digests, _stepper recurses and each level builds its own closures, so
-# this cannot live in one.
+async def _gather_all(coroutines: list) -> None:
+    """
+    Run every coroutine before raising the first error.
+
+    Waiting for all writes prevents a retry from racing unfinished writes.
+
+    Args:
+        coroutines (list): Coroutines to run.
+
+    """
+    for result in await asyncio.gather(*coroutines, return_exceptions=True):
+        if isinstance(result, BaseException):
+            raise result
+
+
+async def _write_rows(
+    store: dict, arrays: dict, rows: dict[str, np.ndarray], low: int, high: int
+) -> None:
+    """
+    Write rows ``low:high`` of each array in an in-memory store.
+
+    Args:
+        store (dict): The in-memory store.
+        arrays (dict): Arrays already opened in ``store``, by name. Arrays
+            opened here are added to it.
+        rows (dict[str, np.ndarray]): New values of the rows, by array name.
+        low (int): First row.
+        high (int): Row after the last.
+
+    """
+
+    async def write(name: str, values: np.ndarray) -> None:
+        if name not in arrays:
+            arrays[name] = await open_array(
+                store=store, path=name, mode="r+", zarr_format=ZARR_FORMAT
+            )
+        await arrays[name].setitem(slice(low, high), values)
+
+    await _gather_all([write(name, values) for name, values in rows.items()])
+
+
+def _copy_store(source: dict, target: Any) -> int:
+    """
+    Copy every key of an in-memory store into ``target`` and remember them.
+
+    Args:
+        source (dict): The in-memory store.
+        target (Any): Zarr store to write to.
+
+    Returns:
+        int: Number of keys written.
+
+    """
+    reset_disk_persist_cache(target)
+    return _copy_changed_keys(source, target, _store_cache_key(target))
+
+
+# Track flushed rows by store identity across recursive `_stepper` calls.
 _MEMORY_FLUSHED_ROWS: dict[int, int] = {}
 
 
@@ -165,17 +226,14 @@ def _memory_region(dataset: Any, position: Any, flushed: int) -> Any:
     if not dims:
         return None
     outer = dims[0]
-    # Every data variable must start with the same dimension, or one region
-    # cannot describe the change to all of them.
+    # One region can cover every variable only when the outer dimension matches.
     if any(variable.dims[:1] != (outer,) for variable in variables):
         return None
     if outer not in position:
         return None
 
-    # Sweeps are not necessarily monotonic -- CircularSweep is not -- so the row
-    # is found by value rather than by bisection. A value that appears more than
-    # once makes the row ambiguous (and `.loc` would have written every match),
-    # so fall back to rewriting everything rather than guess.
+    # Circular sweeps are not monotonic. Repeated values make the row ambiguous,
+    # so use a full write instead of guessing.
     rows = np.flatnonzero(dataset[outer].values == position[outer])
     if rows.size != 1:
         return None
@@ -402,12 +460,12 @@ class PointSweep:
         start_delay: float = 0.0,
     ) -> None:
         """
-        Define a parameter sweep of a certain list of points that is not necessarily a ramp.
+        Define a sweep over an explicit sequence of setpoints.
 
         Args:
             parameter (Parameter | Sequence[Parameter]): QCoDeS parameter or
                 parameters that share the same setpoints.
-            points (Sequence[int | float]): Arbitrary List of points to sweep through.
+            points (Sequence[int | float]): Setpoints in traversal order.
             delay (float): Dwell time in seconds after each setpoint. Defaults
                 to 0.
             start_delay (float): Delay in seconds after moving to the first
@@ -419,7 +477,7 @@ class PointSweep:
 
         """
 
-        # NOTE: NumPy arrays are not runtime Sequences; pass ``points.tolist()``.
+        # NumPy arrays are not runtime Sequences; callers must pass a list.
         if (
             not isinstance(points, Sequence)
             or isinstance(points, (str, bytes))
@@ -475,7 +533,6 @@ class SegmentedSweep:
 
         """
 
-        # build the three segments of the sweep
         n_p = num / (stop - start + center_width * (factor - 1))
 
         self.segments = [
@@ -507,18 +564,19 @@ class SegmentedSweep:
         self.stop = stop
         self.num = num
 
-        # need to be accsessed in measurement (only dummy)
+        # Measurement expects every sweep to expose these attributes.
         self.delay = 0.0
         self.start_delay = 0.0
 
 
 def _sweep_param(sweep: Sweep = None, override: list = None):
     """
-    Does a single sweep
+    Set one parameter at each point in a sweep.
 
     Args:
-     sweep
-     override: List of parameter, values and delay to manualy do a sweep, and override Sweep
+        sweep (Sweep): Sweep definition. Ignored when *override* is provided.
+        override (list): Optional ``[parameter, values, delay]`` tuple used by
+            parallel sweeps.
     """
     if override:
         param, values, delay = override
@@ -536,16 +594,14 @@ def _sweep_parameters(sweep: Sweep) -> list:
     """
     Return a sweep's parameters as a flat list.
 
-    ``Sweep`` stores a list, but ``CircularSweep`` and ``SegmentedSweep`` store
-    ``np.atleast_1d(parameter)`` -- a numpy array, which is not a
-    ``collections.abc.Sequence``. Testing with ``isinstance(..., Sequence)``
-    therefore skipped those sweeps and ended up calling the array itself.
+    Sweep classes store parameters as either sequences or NumPy arrays. This
+    helper normalizes both forms for callers.
 
     Args:
         sweep (Sweep): Sweep whose parameters are needed.
 
     Returns:
-        list: The sweep's parameters, however the sweep chose to store them.
+        list: Parameters in the sweep.
 
     """
     parameter = sweep.parameter
@@ -573,10 +629,8 @@ def sweeper(sweeps: Sweep | Sequence[Sweep], parallel: bool = False):
         for parameter in _sweep_parameters(sweep):
             override = [parameter, sweep.values, sweep.delay]
             if parallel:
-                # Pass the override through `args` rather than closing over the
-                # loop variable: a lambda would capture `parameter` by
-                # reference, so every thread could sweep whichever parameter the
-                # loop happened to reach first.
+                # Pass the parameter explicitly so the thread does not capture
+                # the loop variable by reference.
                 Thread(target=_sweep_param, kwargs={"override": override}).start()
             else:
                 _sweep_param(override=override)
@@ -636,25 +690,26 @@ def _stepper(
     sweep_index_cache: Optional[list] = None,
 ):
     """
-    Recursive _stepper function for generating the for loops required to sweep measurements
+    Run nested sweeps and checkpoint acquired data.
 
     Args:
-        dataset: xarray dataset to store the data
-        data_location: Location to store the data
-        depth: Depth of the nested for loops to be emulated
-        sweeps: List of sweeps for each for loop (slow sweeps only; buffered sweeps handled separately)
-        independents: List of independent parameters that are to be plotted, with the measured parameters
-        dependents: List of dependent parameters (QCoDeS parameters)
-        sweep_cache: Cache of the last sweep parameters (one slot per entry in `independents`)
-        save_interval: Time interval to save the data
-        interrupt: Boolean to enable custom stops
-        parallel_sweep: Boolean to enable parallel parameter sweeps
-        memory_store: Optional zarr store that keeps the live dataset in memory
-        disk_store: Optional zarr store used for persisting to disk
-        nc_snapshot_path: Optional netcdf path for best-effort in-run snapshots
-        verbose: Enables verbose logging of persistence actions when True
-        buffered_sweep: Optional buffered sweep tree describing fast, instrument-internal sweeps
-        sweep_index_cache: Optional list of indices for the current sweep point in each sweep, used for progress tracking
+        dataset: Preallocated xarray dataset to fill.
+        data_location: Fallback checkpoint path.
+        depth: Current depth in the nested slow sweeps.
+        sweeps: Slow sweeps in outer-to-inner order.
+        independents: Swept parameters used as dataset coordinates.
+        dependents: QCoDeS parameters read at each point.
+        sweep_cache: Current coordinate value for each independent.
+        bar: Progress bar updated after each point.
+        save_interval: Minimum seconds between checkpoints.
+        interrupt: Callback that requests an early stop when true.
+        parallel_sweep: Set parameters on separate threads.
+        memory_store: In-memory Zarr store used for live data.
+        disk_store: Zarr store used for recovery checkpoints.
+        nc_snapshot_path: Optional path for best-effort netCDF snapshots.
+        verbose: Log checkpoint operations.
+        buffered_sweep: Optional tree of hardware-buffered sweeps.
+        sweep_index_cache: Current positional index for each independent.
     """
     global last_save
     depth = int(depth)
@@ -662,8 +717,8 @@ def _stepper(
     if sweep_index_cache is None:
         sweep_index_cache = [None] * len(independents)
 
-    # NOTE: Measurement.run supplies buffered trees separately; legacy direct
-    # callers must provide ordinary sweep objects here until normalization below.
+    # Measurement.run supplies buffered trees separately. Keep support for
+    # legacy direct callers that pass one in `sweeps`.
     has_duplicate_sweep_values = any(
         len(sw.values) != len(set(sw.values)) for sw in sweeps
     )
@@ -684,14 +739,15 @@ def _stepper(
         else:
             arr.loc[slow_indexers] = value
 
+    # Reuse opened arrays because parsing their metadata is relatively expensive.
+    memory_arrays: dict = {}
+
     def _persist_memory(position=None):
         """
         Flush acquired points to the in-memory store the live server reads.
 
-        Rewriting the whole dataset costs time proportional to its size, not to
-        what changed: at 12 M points `to_zarr(mode="w")` takes longer than the
-        default 0.1 s checkpoint interval. When the caller knows where the sweep
-        is, only the rows touched since the last flush are written.
+        When the acquired position is known, only rows changed since the last
+        flush are written. Otherwise the whole store is replaced.
 
         Args:
             position (Any): Coordinate values of the point just acquired, or
@@ -710,9 +766,11 @@ def _stepper(
         if region is not None:
             low, high, outer = region
             try:
-                root = zarr.open_group(store=memory_store, mode="r+")
-                for name, variable in dataset.data_vars.items():
-                    root[name][low:high] = variable.values[low:high]
+                rows = {
+                    name: variable.values[low:high]
+                    for name, variable in dataset.data_vars.items()
+                }
+                sync(_write_rows(memory_store, memory_arrays, rows, low, high))
             except Exception as exc:
                 # An unseeded store has no group to open. Fall through to the
                 # full write, which creates one.
@@ -734,7 +792,8 @@ def _stepper(
                     )
                 return
 
-        dataset.to_zarr(store=memory_store, mode="w")
+        memory_arrays.clear()
+        dataset.to_zarr(store=memory_store, mode="w", zarr_format=ZARR_FORMAT)
         _MEMORY_FLUSHED_ROWS[key] = 0
         if verbose:
             logger.info("[_stepper._persist_memory] Saved dataset to in-memory store")
@@ -757,13 +816,17 @@ def _stepper(
                                 len(memory_store),
                             )
                     else:
-                        dataset.to_zarr(store=disk_store, mode="a")
+                        dataset.to_zarr(
+                            store=disk_store, mode="a", zarr_format=ZARR_FORMAT
+                        )
                         if verbose:
                             logger.info(
                                 "[_stepper._persist_disk] Saved dataset directly to disk store"
                             )
                 else:
-                    dataset.to_zarr(store=data_location, mode="w")
+                    dataset.to_zarr(
+                        store=data_location, mode="w", zarr_format=ZARR_FORMAT
+                    )
                     if verbose:
                         logger.info(
                             f"[_stepper._persist_disk] Saved dataset to {data_location}"
@@ -801,13 +864,11 @@ def _stepper(
                     exc,
                 )
 
-    # Where this level last acquired a point. The checkpoint that runs on the
-    # way out has no `slow_indexers` in scope, and without a position it would
-    # rewrite the whole store -- once per recursive call.
+    # Keep the last position available for the final checkpoint at this depth.
     last_position: dict = {}
 
     def _checkpoint(position=None):
-        """Persist live state without letting a transient file lock skip sweep points."""
+        """Persist live state without dropping points during a file lock."""
         _persist_memory(position)
         try:
             _persist_disk()
@@ -840,8 +901,7 @@ def _stepper(
         progress.start()
 
         try:
-            # Instrument access stays on the caller thread. Only the estimated
-            # tqdm updates happen on _BufferedProgress's background thread.
+            # Only estimated progress updates run in the background.
             toplevel = _arm_instruments(buffered_sweep)
             toplevel.run_sweep()
 
@@ -849,8 +909,7 @@ def _stepper(
             _fetch_results(buffered_sweep, state=results_state)
             buffered_results_tree = results_state.get("results_tree", {})
 
-            # Each dependent DataArray has [slow dims..., buffered dims...].
-            # Selecting only slow dimensions assigns the complete fast block.
+            # Selecting the slow dimensions assigns the complete buffered block.
             for dep, entry in buffered_results_tree.items():
                 arr = dataset.data_vars[f"{dep.name}"]
                 _assign(
@@ -871,11 +930,7 @@ def _stepper(
             slow_indexers = {}
             slow_position_indexers = {}
 
-            # `dependents` never contains buffered dependents -- those are
-            # described by the buffered tree and written by _run_buffered_block
-            # below -- so every entry here is read directly. A guard used to sit
-            # in this loop testing membership of a set that was initialised
-            # empty immediately above it, so it could never fire.
+            # Buffered dependents are handled separately by `_run_buffered_block`.
             for dependent in dependents:
                 arr = dataset.data_vars[f"{dependent.name}"]
                 _assign(
@@ -941,12 +996,8 @@ def _stepper(
                 )
 
             elif depth == 1:
-                # At the deepest level: evaluate dependents and (optionally)
-                # run a buffered sweep tree.
-
-                # Build indexers for the "slow" dimensions from sweeps.
-                # We deliberately ignore any buffered dims here; they are
-                # spanned by the buffered sweep itself.
+                # Build indexers for slow dimensions; the buffered sweep owns
+                # its own dimensions.
                 slow_indexers = {}
                 slow_position_indexers = {}
 
@@ -962,11 +1013,7 @@ def _stepper(
                         slow_indexers[p.name] = sweep_cache[cache_idx]
                         slow_position_indexers[p.name] = sweep_index_cache[cache_idx]
 
-                # `dependents` never contains buffered dependents -- those are
-                # described by the buffered tree and written by _run_buffered_block
-                # below -- so every entry here is read directly. A guard used to sit
-                # in this loop testing membership of a set that was initialised
-                # empty immediately above it, so it could never fire.
+                # Buffered dependents are handled separately below.
                 for dependent in dependents:
                     arr = dataset.data_vars[f"{dependent.name}"]
                     _assign(
@@ -977,8 +1024,7 @@ def _stepper(
                     )
 
                 if buffered_sweep is not None:
-                    # Re-arm instruments for this buffered tree at every
-                    # slow-step: instruments can only be read once after a sweep.
+                    # Buffered instruments must be re-armed at each slow point.
                     _run_buffered_block(slow_indexers, slow_position_indexers)
                 else:
                     bar.update(1)
@@ -987,10 +1033,9 @@ def _stepper(
 
                 if last_save == 0 or (time() - last_save > save_interval):
                     last_save = time()
-                    # NOTE: Writing dataset to MemoryStore as well as DiskStore
                     _checkpoint(slow_indexers)
     except (Exception, KeyboardInterrupt):
-        # Preserve the latest acquired data, then let the caller handle the interruption/failure.
+        # Preserve acquired data, then re-raise the original failure.
         try:
             _persist_memory()
         except Exception:

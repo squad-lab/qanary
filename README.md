@@ -8,19 +8,24 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23536660.svg)](https://doi.org/10.5281/zenodo.23536660)
 [![documentation](https://img.shields.io/badge/docs-qanary.squad--lab.org-blue.svg)](https://qanary.squad-lab.org/)
 
-Qanary simplifies measurement workflows and replaces QCoDeS for handling measurements.
+Qanary runs parameter sweeps, records them as xarray datasets, and publishes
+live results to Qimchi.
 
 ## Installation
 
-Qanary requires Python 3.13. Install the latest release from PyPI:
+Qanary officially supports Python 3.14. Install the latest release from PyPI:
 
 ```console
-uv add qanary
+uv add "qanary[drivers]"
 ```
 
 ```console
-pip install qanary
+pip install "qanary[drivers]"
 ```
+
+The `drivers` extra adds the instrument drivers used by the examples
+([`qcdrivers`](https://gitlab.com/squad-lab/qcdrivers) and QCoDeS contrib
+drivers). Leave it out if you bring your own.
 
 ## Migrating from QCUtils
 
@@ -31,11 +36,12 @@ changed from `~/.qcutils` to `~/.qanary`.
 
 ## Preparing a measurement project
 
-We manage and run our measurements using the tool `uv`. To get started, follow the official [Astral installation guide](https://astral.sh/uv/) to install `uv`. It handles virtual environments and package dependencies for you, simplifying Python package management.
+The examples below use [`uv`](https://docs.astral.sh/uv/) to manage the project
+environment and run commands.
 
 ### Initializing a Measurement
 
-To start a measurement, first initialize a `uv` project with the desired measurement name:
+Create a project for the measurement:
 
 ```sh
 uv init measurement_name
@@ -45,15 +51,16 @@ cd measurement_name
 Add Qanary to the project with:
 
 ```sh
-uv add qanary
+uv add "qanary[drivers]"
 ```
 
 > [!note] NOTE  
-> Qanary installs its QCoDeS, Zurich Instruments, live-visualization, and driver dependencies, so there is no need to add them separately.
+> Qanary includes QCoDeS and live plotting. The `drivers` extra adds the
+> instrument drivers, including the Zurich Instruments and VISA packages.
 
 ### Running Commands
 
-Instead of manually activating a virtual environment and running `python -m package.method`, you can use `uv` to streamline this:
+Run modules inside the project environment with:
 
 ```sh
 uv run -m package.method
@@ -61,7 +68,7 @@ uv run -m package.method
 
 ### Using `pyproject.toml`
 
-If you prefer to skip the `add` commands, you can set up the project directly with a `pyproject.toml` file. Here's an example:
+You can also declare Qanary directly in `pyproject.toml`:
 
 ```toml
 [project]
@@ -75,19 +82,17 @@ dependencies = [
 ]
 ```
 
-After updating the `pyproject.toml` file, you can sync the dependencies with:
+Then install the declared dependencies:
 
 ```sh
 uv sync
 ```
 
-This will automatically fetch and install the required packages.
-
 ## Measurement
 
 For complete measurement scripts, see the [examples](https://gitlab.com/squad-lab/qanary/-/tree/main/examples) directory.
 
-### Live & Disk Format
+### Live and disk formats
 
 `qanary` uses a split data path:
 
@@ -102,7 +107,7 @@ netCDF file remains as the measurement record.
 
 ## Development
 
-We welcome contributions to `qanary`! To get started with development, clone the repository:
+To contribute, clone the repository:
 ```sh
 git clone https://gitlab.com/squad-lab/qanary
 ```

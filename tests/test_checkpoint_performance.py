@@ -1,28 +1,4 @@
-"""
-Performance guardrails for checkpointing.
-
-These are *complexity* tests, not wall-clock ones. A checkpoint has to stay
-proportional to what the sweep just acquired rather than to the size of the
-dataset, and the cheapest way to pin that is to count the work rather than time
-it -- a threshold in milliseconds passes or fails on how loaded the runner is,
-which makes it noise that people learn to ignore.
-
-The property that matters: growing the dataset must not grow the cost of one
-checkpoint. Both stores are covered.
-
-  - the in-memory store, which Qimchi-Connect snapshots, is written by region
-  - the on-disk store is written key by key, skipping unchanged keys
-
-Measured on the reference machine before these were added, at 12 M points
-(91 MiB, one checkpoint):
-
-    to_zarr(mode="w"), whole dataset     123.6 ms   over the 0.1 s interval
-    region write, rows since last flush   20.1 ms   6.2x faster
-
-If a change makes these tests fail, the checkpoint has gone back to being
-O(dataset) and a large measurement will spend more time saving than measuring.
-
-"""
+"""Checkpoint complexity tests for memory and disk stores."""
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -34,6 +10,7 @@ import zarr
 
 from qanary import sweep as sweep_module
 from qanary.sweep import (
+    ZARR_FORMAT,
     _copy_changed_keys,
     _memory_region,
     _stepper,
@@ -42,9 +19,7 @@ from qanary.sweep import (
 )
 
 
-class CountingStore(zarr.MemoryStore):
-    """Memory store that records every key written to it."""
-
+class CountingDict(dict):
     def __init__(self):
         super().__init__()
         self.writes = []
@@ -52,6 +27,16 @@ class CountingStore(zarr.MemoryStore):
     def __setitem__(self, key, value):
         self.writes.append(key)
         super().__setitem__(key, value)
+
+
+class CountingStore(zarr.storage.MemoryStore):
+    def __init__(self):
+        super().__init__()
+        self.writes = []
+
+    async def set(self, key, value, *args, **kwargs):
+        self.writes.append(key)
+        await super().set(key, value, *args, **kwargs)
 
 
 def dataset(rows: int, cols: int = 64) -> xr.Dataset:
@@ -62,17 +47,15 @@ def dataset(rows: int, cols: int = 64) -> xr.Dataset:
     )
 
 
-def seeded(ds: xr.Dataset) -> CountingStore:
+def seeded(ds: xr.Dataset) -> CountingDict:
     """Seed a store the way ``Measurement.run`` does, then forget those writes."""
-    store = CountingStore()
-    ds.to_zarr(store=store, mode="w")
+    store = CountingDict()
+    ds.to_zarr(store=store, mode="w", zarr_format=ZARR_FORMAT)
     store.writes.clear()
     return store
 
 
 class ProbeParameter:
-    """Minimal settable parameter for driving one real ``_stepper`` point."""
-
     def __init__(self, name: str):
         self.name = name
         self.value = None
@@ -84,8 +67,6 @@ class ProbeParameter:
 
 
 class ProbeDependent:
-    """Dependent returning the row that ``_stepper`` should persist."""
-
     name = "signal"
 
     def __init__(self, values):
@@ -95,7 +76,7 @@ class ProbeDependent:
         return self.values
 
 
-def checkpoint_row(ds: xr.Dataset, store: CountingStore, row: int) -> None:
+def checkpoint_row(ds: xr.Dataset, store: CountingDict, row: int) -> None:
     """Acquire and checkpoint one row through the production ``_stepper`` path."""
     reset_disk_persist_cache()
     sweep_module._MEMORY_FLUSHED_ROWS[id(store)] = row
@@ -109,9 +90,7 @@ def checkpoint_row(ds: xr.Dataset, store: CountingStore, row: int) -> None:
         delay=0.0,
     )
 
-    # A seeded, region-writable store must never fall through to a full write.
-    # Patching the production method makes this test fail if `_persist_memory`
-    # regresses, even when both paths touch the same number of chunks.
+    # Fail immediately if a region checkpoint falls back to a full write.
     with patch.object(
         xr.Dataset,
         "to_zarr",
@@ -128,19 +107,12 @@ def checkpoint_row(ds: xr.Dataset, store: CountingStore, row: int) -> None:
             bar=SimpleNamespace(update=lambda points: None),
             save_interval=float("inf"),
             memory_store=store,
-            disk_store=zarr.MemoryStore(),
+            disk_store=zarr.storage.MemoryStore(),
         )
 
 
 class TestMemoryCheckpointStaysLocal:
-    """The in-memory store backs live snapshots and is written most often."""
-
     def test_one_row_uses_the_same_number_of_writes_for_each_dataset_height(self):
-        """
-        A region checkpoint should issue the same number of store writes whether
-        the sweep has 64 rows or 1024. This measures operations, not bytes.
-
-        """
         counts = []
         for rows in (64, 256, 1024):
             ds = dataset(rows)
@@ -162,19 +134,17 @@ class TestMemoryCheckpointStaysLocal:
         region = len(store.writes)
 
         store = seeded(ds)
-        ds.to_zarr(store=store, mode="w")
+        ds.to_zarr(store=store, mode="w", zarr_format=ZARR_FORMAT)
         full = len(store.writes)
 
         assert region < full
 
 
 class TestDiskCheckpointStaysLocal:
-    """The disk store is a mirror; only what changed should reach it."""
-
     def test_an_unchanged_dataset_writes_nothing(self):
         ds = dataset(128)
-        source = zarr.MemoryStore()
-        ds.to_zarr(store=source, mode="w")
+        source = {}
+        ds.to_zarr(store=source, mode="w", zarr_format=ZARR_FORMAT)
         target = CountingStore()
         reset_disk_persist_cache()
 
@@ -187,19 +157,18 @@ class TestDiskCheckpointStaysLocal:
         assert target.writes == []
 
     def test_one_changed_chunk_costs_the_same_however_tall_the_dataset(self):
-        """One acquired row must not drag the whole store to disk with it."""
         counts = []
         for rows in (64, 256, 1024):
             ds = dataset(rows)
-            source = zarr.MemoryStore()
-            ds.to_zarr(store=source, mode="w")
+            source = {}
+            ds.to_zarr(store=source, mode="w", zarr_format=ZARR_FORMAT)
             target = CountingStore()
             reset_disk_persist_cache()
             _copy_changed_keys(source, target, _store_cache_key(target))
 
-            # Acquire one more row and re-encode, as a checkpoint would.
+            # Re-encode one newly acquired row.
             ds["signal"].values[rows // 2, :] = np.random.rand(64)
-            ds.to_zarr(store=source, mode="w")
+            ds.to_zarr(store=source, mode="w", zarr_format=ZARR_FORMAT)
             target.writes.clear()
             _copy_changed_keys(source, target, _store_cache_key(target))
             counts.append(len(target.writes))
@@ -211,8 +180,6 @@ class TestDiskCheckpointStaysLocal:
 
 
 class TestRegionSafety:
-    """When a region cannot be identified, the whole store must be rewritten."""
-
     @pytest.mark.parametrize(
         "position, why",
         [
@@ -225,12 +192,6 @@ class TestRegionSafety:
         assert _memory_region(dataset(16), position, 0) is None, why
 
     def test_a_repeated_coordinate_value_is_ambiguous(self):
-        """
-        ``CircularSweep`` revisits values, so a coordinate can appear twice and
-        the row is no longer implied. Rewriting everything is correct; guessing
-        a row is not.
-
-        """
         ds = xr.Dataset(
             {"signal": (("x", "y"), np.zeros((4, 2)))},
             coords={"x": np.array([0.0, 1.0, 1.0, 0.0]), "y": np.arange(2.0)},
@@ -244,7 +205,6 @@ class TestRegionSafety:
         assert _memory_region(ds, {"x": 20.0}, 17) == (17, 21, "x")
 
     def test_a_position_behind_the_flush_point_is_still_covered(self):
-        """A sweep that moves backwards must not leave the row unwritten."""
         ds = dataset(32)
 
         assert _memory_region(ds, {"x": 5.0}, 20) == (5, 6, "x")

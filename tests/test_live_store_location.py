@@ -1,13 +1,4 @@
-"""
-Tests for where the live Zarr store lives and how it is cleaned up.
-
-The store is scratch space for a running measurement: Qimchi reads it only as
-a fallback while the run is in flight. Keeping it out of the data directory is
-what stops it appearing in Qimchi's Explorer beside finished measurements, so
-these pin the location, the happy-path cleanup, what happens to the data when
-the export fails, and that pruning never touches a live run.
-
-"""
+"""Tests for live-store placement, recovery, and cleanup."""
 
 from __future__ import annotations
 
@@ -31,18 +22,11 @@ from qanary.sweep import Sweep
 
 @pytest.fixture
 def seeded(measurement, gates, signal):
-    """
-    A measurement with a dataset and a live store, as it would be part-way
-    through a run.
-
-    Returns:
-        xr.Dataset: The in-memory dataset.
-
-    """
+    """Seed a measurement with an in-memory dataset and live store."""
     dataset = measurement._make_dataset([Sweep(gates.x, 0.0, 1.0, num=3)], [signal])
     dataset["signal"].values[:] = [1.0, 2.0, 3.0]
     measurement.arr = dataset
-    dataset.to_zarr(measurement.live_data, mode="w")
+    dataset.to_zarr(measurement.live_data, mode="w", zarr_format=2)
     return dataset
 
 
@@ -50,7 +34,7 @@ def _store(path: Path, points: int = 3) -> None:
     xr.Dataset(
         {"signal": ("x", [float(i) for i in range(points)])},
         coords={"x": list(range(points))},
-    ).to_zarr(store=zarr.DirectoryStore(str(path)), mode="w")
+    ).to_zarr(store=zarr.storage.LocalStore(str(path)), mode="w", zarr_format=2)
 
 
 class TestLocation:
@@ -92,7 +76,6 @@ class TestPruning:
         assert "unfinished measurement" in caplog.text
 
     def test_it_leaves_a_live_measurement_alone(self):
-        """A multi-day sweep outlives the age floor; the registry is what saves it."""
         running = _live_store_root() / "1-running.zarr"
         _store(running)
         os.utime(running, (0, 0))
@@ -104,7 +87,6 @@ class TestPruning:
         assert running.exists()
 
     def test_it_leaves_a_recently_created_store_alone(self):
-        """Covers the window between creating a store and writing its row."""
         fresh = _live_store_root() / "1-just-started.zarr"
         _store(fresh)
 
@@ -129,12 +111,6 @@ class TestPruning:
 
 class TestFailedExportRescue:
     def test_the_store_is_converted_into_the_data_directory(self, measurement, caplog):
-        """
-        A failed export must not lose the run. Only the first write fails
-        here, so the recovery conversion gets to succeed -- the case where a
-        transient problem cost the export but not the machine.
-
-        """
         _store(Path(measurement.live_data), points=4)
         real_to_netcdf = xr.Dataset.to_netcdf
         writes = count()
@@ -157,11 +133,6 @@ class TestFailedExportRescue:
     def test_an_unconvertible_store_is_still_preserved_beside_the_data(
         self, measurement, caplog
     ):
-        """
-        Conversion writes the same file the export just failed to write, so it
-        can fail identically. The store has to survive that.
-
-        """
         _store(Path(measurement.live_data))
 
         with (
@@ -214,14 +185,7 @@ class TestHappyPath:
 
 
 class TestCrashRecovery:
-    """
-    A run killed outright never finalises, so its live store is the only copy
-    of the data. The marker beside it says where that data belongs.
-
-    """
-
     def _abandoned(self, tmp_path, points: int = 5) -> tuple[Path, Path]:
-        """Leave a store and its marker behind, aged past the prune floor."""
         store = _live_store_root() / "1-crashed.zarr"
         _store(store, points=points)
         target = tmp_path / "data" / "W1" / "1-crashed.nc"
@@ -262,7 +226,6 @@ class TestCrashRecovery:
         assert "could not be recovered" in caplog.text
 
     def test_recovery_never_overwrites_an_existing_export(self, tmp_path, caplog):
-        """A finished .nc is authoritative; a stale store must not clobber it."""
         store, target = self._abandoned(tmp_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         xr.Dataset({"signal": ("x", [9.0])}, coords={"x": [0]}).to_netcdf(target)

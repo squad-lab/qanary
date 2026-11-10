@@ -10,7 +10,9 @@ These tutorials introduce Qanary through the [example
 scripts](https://gitlab.com/squad-lab/qanary/-/tree/main/examples). Each page
 focuses on the part of an example that is useful in a real measurement: how to
 model the sweep, arrange buffered instruments, and choose the relevant timing
-and trigger settings.
+and trigger settings. The examples use drivers from
+[`qcdrivers`](https://gitlab.com/squad-lab/qcdrivers), so install Qanary with
+its `drivers` extra (`uv add "qanary[drivers]"`).
 
 The parameter tutorials run without hardware. The buffered tutorials use lab
 instruments and are intended as starting points; update addresses, channels,
