@@ -15,12 +15,16 @@ Qanary simplifies measurement workflows and replaces QCoDeS for handling measure
 Qanary requires Python 3.13. Install the latest release from PyPI:
 
 ```console
-uv add qanary
+uv add "qanary[drivers]"
 ```
 
 ```console
-pip install qanary
+pip install "qanary[drivers]"
 ```
+
+The `drivers` extra adds the instrument drivers used by the examples
+([`qcdrivers`](https://gitlab.com/squad-lab/qcdrivers) and QCoDeS contrib
+drivers). Leave it out if you bring your own.
 
 ## Migrating from QCUtils
 
@@ -45,11 +49,12 @@ cd measurement_name
 Add Qanary to the project with:
 
 ```sh
-uv add qanary
+uv add "qanary[drivers]"
 ```
 
 > [!note] NOTE  
-> Qanary installs its QCoDeS, Zurich Instruments, live-visualization, and driver dependencies, so there is no need to add them separately.
+> Qanary includes QCoDeS and live plotting. The `drivers` extra adds the
+> instrument drivers, including the Zurich Instruments and VISA packages.
 
 ### Running Commands
 
