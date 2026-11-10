@@ -34,6 +34,7 @@ import zarr
 
 from qanary import sweep as sweep_module
 from qanary.sweep import (
+    ZARR_FORMAT,
     _copy_changed_keys,
     _memory_region,
     _stepper,
@@ -42,9 +43,7 @@ from qanary.sweep import (
 )
 
 
-class CountingStore(zarr.MemoryStore):
-    """Memory store that records every key written to it."""
-
+class CountingDict(dict):
     def __init__(self):
         super().__init__()
         self.writes = []
@@ -52,6 +51,16 @@ class CountingStore(zarr.MemoryStore):
     def __setitem__(self, key, value):
         self.writes.append(key)
         super().__setitem__(key, value)
+
+
+class CountingStore(zarr.storage.MemoryStore):
+    def __init__(self):
+        super().__init__()
+        self.writes = []
+
+    async def set(self, key, value, *args, **kwargs):
+        self.writes.append(key)
+        await super().set(key, value, *args, **kwargs)
 
 
 def dataset(rows: int, cols: int = 64) -> xr.Dataset:
@@ -62,17 +71,15 @@ def dataset(rows: int, cols: int = 64) -> xr.Dataset:
     )
 
 
-def seeded(ds: xr.Dataset) -> CountingStore:
+def seeded(ds: xr.Dataset) -> CountingDict:
     """Seed a store the way ``Measurement.run`` does, then forget those writes."""
-    store = CountingStore()
-    ds.to_zarr(store=store, mode="w")
+    store = CountingDict()
+    ds.to_zarr(store=store, mode="w", zarr_format=ZARR_FORMAT)
     store.writes.clear()
     return store
 
 
 class ProbeParameter:
-    """Minimal settable parameter for driving one real ``_stepper`` point."""
-
     def __init__(self, name: str):
         self.name = name
         self.value = None
@@ -95,7 +102,7 @@ class ProbeDependent:
         return self.values
 
 
-def checkpoint_row(ds: xr.Dataset, store: CountingStore, row: int) -> None:
+def checkpoint_row(ds: xr.Dataset, store: CountingDict, row: int) -> None:
     """Acquire and checkpoint one row through the production ``_stepper`` path."""
     reset_disk_persist_cache()
     sweep_module._MEMORY_FLUSHED_ROWS[id(store)] = row
@@ -128,19 +135,12 @@ def checkpoint_row(ds: xr.Dataset, store: CountingStore, row: int) -> None:
             bar=SimpleNamespace(update=lambda points: None),
             save_interval=float("inf"),
             memory_store=store,
-            disk_store=zarr.MemoryStore(),
+            disk_store=zarr.storage.MemoryStore(),
         )
 
 
 class TestMemoryCheckpointStaysLocal:
-    """The in-memory store backs live snapshots and is written most often."""
-
     def test_one_row_uses_the_same_number_of_writes_for_each_dataset_height(self):
-        """
-        A region checkpoint should issue the same number of store writes whether
-        the sweep has 64 rows or 1024. This measures operations, not bytes.
-
-        """
         counts = []
         for rows in (64, 256, 1024):
             ds = dataset(rows)
@@ -162,19 +162,17 @@ class TestMemoryCheckpointStaysLocal:
         region = len(store.writes)
 
         store = seeded(ds)
-        ds.to_zarr(store=store, mode="w")
+        ds.to_zarr(store=store, mode="w", zarr_format=ZARR_FORMAT)
         full = len(store.writes)
 
         assert region < full
 
 
 class TestDiskCheckpointStaysLocal:
-    """The disk store is a mirror; only what changed should reach it."""
-
     def test_an_unchanged_dataset_writes_nothing(self):
         ds = dataset(128)
-        source = zarr.MemoryStore()
-        ds.to_zarr(store=source, mode="w")
+        source = {}
+        ds.to_zarr(store=source, mode="w", zarr_format=ZARR_FORMAT)
         target = CountingStore()
         reset_disk_persist_cache()
 
@@ -187,19 +185,18 @@ class TestDiskCheckpointStaysLocal:
         assert target.writes == []
 
     def test_one_changed_chunk_costs_the_same_however_tall_the_dataset(self):
-        """One acquired row must not drag the whole store to disk with it."""
         counts = []
         for rows in (64, 256, 1024):
             ds = dataset(rows)
-            source = zarr.MemoryStore()
-            ds.to_zarr(store=source, mode="w")
+            source = {}
+            ds.to_zarr(store=source, mode="w", zarr_format=ZARR_FORMAT)
             target = CountingStore()
             reset_disk_persist_cache()
             _copy_changed_keys(source, target, _store_cache_key(target))
 
-            # Acquire one more row and re-encode, as a checkpoint would.
+            # Re-encode one newly acquired row.
             ds["signal"].values[rows // 2, :] = np.random.rand(64)
-            ds.to_zarr(store=source, mode="w")
+            ds.to_zarr(store=source, mode="w", zarr_format=ZARR_FORMAT)
             target.writes.clear()
             _copy_changed_keys(source, target, _store_cache_key(target))
             counts.append(len(target.writes))

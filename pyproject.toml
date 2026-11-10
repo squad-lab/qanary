@@ -27,11 +27,8 @@ dependencies = [
   "scipy>=1.15.2",
   "ipykernel>=7.1.0",
   "setuptools>=78.1.0",
-  "zarr==2.18.4",
-  "numcodecs==0.15.0",
-  # xarray 2026.9 passes zarr_format, which Zarr 2.18 does not accept.
-  # TODO: Update the xarray and Zarr constraints together.
-  "xarray>=2025.1,<2026.9",
+  "zarr>=3.1,<4",
+  "xarray>=2025.1",
   "zhinst>=25.1.0",
   "zhinst-qcodes>=0.6.0",
   "pillow>=11.2.1",

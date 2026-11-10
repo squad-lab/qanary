@@ -1,18 +1,10 @@
-"""
-Tests for incremental disk checkpointing.
-
-A checkpoint used to copy every key in the Zarr store, which is dominated by
-per-file I/O rather than data volume while only the chunk just acquired actually
-differs. These pin the behaviour that replaced it: the bytes on disk must stay
-identical to a full copy, and a failed write must stay dirty so a retry picks it
-up.
-
-"""
+"""Tests for incremental disk checkpoints."""
 
 import hashlib
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -20,7 +12,9 @@ import xarray as xr
 import zarr
 
 from qanary.sweep import (
+    ZARR_FORMAT,
     _copy_changed_keys,
+    _copy_store,
     _store_cache_key,
     reset_disk_persist_cache,
 )
@@ -41,45 +35,49 @@ def dataset() -> xr.Dataset:
     )
 
 
-def _store(tag: str) -> zarr.DirectoryStore:
-    """Create an empty DirectoryStore in a throwaway directory."""
-    return zarr.DirectoryStore(os.path.join(tempfile.mkdtemp(), f"{tag}.zarr"))
+def _store(tag: str) -> zarr.storage.LocalStore:
+    """Create an empty LocalStore in a throwaway directory."""
+    return zarr.storage.LocalStore(os.path.join(tempfile.mkdtemp(), f"{tag}.zarr"))
+
+
+def _seeded(dataset: xr.Dataset) -> dict:
+    """Write a dataset to an in-memory store, as ``Measurement.run`` does."""
+    memory = {}
+    dataset.to_zarr(store=memory, mode="w", zarr_format=ZARR_FORMAT)
+    return memory
 
 
 def _tree_hash(store) -> str:
-    """Hash every key and value in a store, so two stores must match exactly."""
+    """Hash every file in a store, so two stores must match exactly."""
+    root = Path(store.root)
     digest = hashlib.sha256()
-    for key in sorted(store.keys()):
-        digest.update(key.encode())
-        digest.update(store[key])
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
 def test_incremental_copy_matches_a_full_copy(dataset):
-    """Skipping unchanged keys must not change what ends up on disk."""
-    memory = zarr.MemoryStore()
-    dataset.to_zarr(store=memory, mode="w")
+    memory = _seeded(dataset)
     reference, incremental = _store("reference"), _store("incremental")
     reset_disk_persist_cache(incremental)
 
     for step in range(3 * N):
         dataset["dmm_v1"].values[(step // N) % N, step % N] = float(step)
-        dataset.to_zarr(store=memory, mode="w")
-        zarr.copy_store(memory, reference, if_exists="replace")
+        dataset.to_zarr(store=memory, mode="w", zarr_format=ZARR_FORMAT)
+        _copy_store(memory, reference)
         _copy_changed_keys(memory, incremental, _store_cache_key(incremental))
 
         assert _tree_hash(reference) == _tree_hash(incremental)
 
-    restored = xr.open_zarr(incremental.path, consolidated=False).load()
+    restored = xr.open_zarr(incremental.root, consolidated=False).load()
     xr.testing.assert_identical(
-        restored, xr.open_zarr(reference.path, consolidated=False).load()
+        restored, xr.open_zarr(reference.root, consolidated=False).load()
     )
 
 
 def test_only_changed_keys_are_rewritten(dataset):
-    """The point of the exercise: one acquired chunk, one file written."""
-    memory = zarr.MemoryStore()
-    dataset.to_zarr(store=memory, mode="w")
+    memory = _seeded(dataset)
     target = _store("target")
     reset_disk_persist_cache(target)
 
@@ -90,72 +88,59 @@ def test_only_changed_keys_are_rewritten(dataset):
     assert unchanged == 0, "an unchanged store must write nothing"
 
     dataset["dmm_v1"].values[0, 0] = 1.0
-    dataset.to_zarr(store=memory, mode="w")
+    dataset.to_zarr(store=memory, mode="w", zarr_format=ZARR_FORMAT)
     changed = _copy_changed_keys(memory, target, _store_cache_key(target))
     assert changed < len(memory)
 
 
 def test_store_removed_underneath_is_rebuilt(dataset):
-    """A vanished store must be rewritten in full, not skipped as up to date."""
-    memory = zarr.MemoryStore()
-    dataset.to_zarr(store=memory, mode="w")
+    memory = _seeded(dataset)
     target = _store("vanishing")
     reset_disk_persist_cache(target)
     _copy_changed_keys(memory, target, _store_cache_key(target))
 
-    shutil.rmtree(target.path)
+    shutil.rmtree(target.root)
     written = _copy_changed_keys(memory, target, _store_cache_key(target))
 
     assert written == len(memory)
 
 
 def test_failed_write_is_retried(dataset):
-    """A locked key must stay dirty so the next attempt writes it."""
 
-    class LockedOnce:
-        """Store proxy that raises PermissionError once for one key."""
+    class LockedOnce(zarr.storage.LocalStore):
+        def __init__(self, root, fail_on):
+            super().__init__(root)
+            self.fail_on, self.armed = fail_on, True
 
-        def __init__(self, real, fail_on):
-            self.real, self.fail_on, self.armed = real, fail_on, True
-
-        def __contains__(self, key):
-            return key in self.real
-
-        def keys(self):
-            return self.real.keys()
-
-        def __getitem__(self, key):
-            return self.real[key]
-
-        def __setitem__(self, key, value):
+        async def set(self, key, value, *args, **kwargs):
             if self.armed and key == self.fail_on:
                 self.armed = False
                 raise PermissionError("store is locked")
-            self.real[key] = value
+            await super().set(key, value, *args, **kwargs)
 
-    memory = zarr.MemoryStore()
-    dataset.to_zarr(store=memory, mode="w")
+    # Zarr does not store a chunk that holds only the fill value.
+    dataset["dmm_v1"].values[0, 0] = 0.0
+    memory = _seeded(dataset)
     target = _store("locked")
     reset_disk_persist_cache(target)
 
     locked_key = "dmm_v1/0.0"
+    assert locked_key in memory
     with pytest.raises(PermissionError):
         _copy_changed_keys(
-            memory, LockedOnce(target, locked_key), _store_cache_key(target)
+            memory, LockedOnce(target.root, locked_key), _store_cache_key(target)
         )
 
-    # As _persist_disk's retry loop does.
+    # Match `_persist_disk` by retrying after the lock clears.
     _copy_changed_keys(memory, target, _store_cache_key(target))
 
     reference = _store("reference")
-    zarr.copy_store(memory, reference, if_exists="replace")
+    _copy_store(memory, reference)
     assert _tree_hash(reference) == _tree_hash(target)
 
 
 def test_reset_clears_only_the_named_store(dataset):
-    """Resetting one measurement must not force a rewrite of another."""
-    memory = zarr.MemoryStore()
-    dataset.to_zarr(store=memory, mode="w")
+    memory = _seeded(dataset)
     kept, cleared = _store("kept"), _store("cleared")
     for store in (kept, cleared):
         reset_disk_persist_cache(store)

@@ -31,18 +31,11 @@ from qanary.sweep import Sweep
 
 @pytest.fixture
 def seeded(measurement, gates, signal):
-    """
-    A measurement with a dataset and a live store, as it would be part-way
-    through a run.
-
-    Returns:
-        xr.Dataset: The in-memory dataset.
-
-    """
+    """Seed a measurement with an in-memory dataset and live store."""
     dataset = measurement._make_dataset([Sweep(gates.x, 0.0, 1.0, num=3)], [signal])
     dataset["signal"].values[:] = [1.0, 2.0, 3.0]
     measurement.arr = dataset
-    dataset.to_zarr(measurement.live_data, mode="w")
+    dataset.to_zarr(measurement.live_data, mode="w", zarr_format=2)
     return dataset
 
 
@@ -50,7 +43,7 @@ def _store(path: Path, points: int = 3) -> None:
     xr.Dataset(
         {"signal": ("x", [float(i) for i in range(points)])},
         coords={"x": list(range(points))},
-    ).to_zarr(store=zarr.DirectoryStore(str(path)), mode="w")
+    ).to_zarr(store=zarr.storage.LocalStore(str(path)), mode="w", zarr_format=2)
 
 
 class TestLocation:

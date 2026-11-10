@@ -58,9 +58,8 @@ class TestLoad:
         xr.testing.assert_identical(load(path), measurement)
 
     def test_reads_back_a_zarr_store(self, tmp_path, measurement):
-        """A live store is a directory, and the suffix selects the engine."""
         path = tmp_path / "1-abc.zarr"
-        measurement.to_zarr(path)
+        measurement.to_zarr(path, zarr_format=2)
 
         xr.testing.assert_identical(load(path), measurement)
 
@@ -99,20 +98,10 @@ class TestLoad:
 
 
 class TestConvert:
-    """Recovering a ``.nc`` file from a leftover live ``.zarr`` store."""
-
     @pytest.fixture
     def stranded(self, tmp_path, measurement) -> Path:
-        """
-        A measurement whose zarr store survived but whose netCDF never got
-        written -- exactly the state a crashed run leaves behind.
-
-        Returns:
-            Path: The ``.nc`` path that does not exist yet.
-
-        """
         nc_path = tmp_path / "3-stranded.nc"
-        measurement.to_zarr(nc_path.with_suffix(".zarr"))
+        measurement.to_zarr(nc_path.with_suffix(".zarr"), zarr_format=2)
         return nc_path
 
     def test_writes_the_netcdf_and_removes_the_zarr_store(self, stranded, measurement):
@@ -223,14 +212,8 @@ def test_every_dataset_error_shares_one_base_class():
 def test_an_undeletable_temporary_file_does_not_mask_the_write_error(
     tmp_path, measurement, monkeypatch
 ):
-    """
-    The cleanup of a failed conversion is itself best-effort: what the caller
-    needs to see is why the write failed, not why the stub could not be
-    removed.
-
-    """
     nc_path = tmp_path / "6-stubborn.nc"
-    measurement.to_zarr(nc_path.with_suffix(".zarr"))
+    measurement.to_zarr(nc_path.with_suffix(".zarr"), zarr_format=2)
 
     def explode(self, path, *args, **kwargs):
         Path(path).write_bytes(b"partial")

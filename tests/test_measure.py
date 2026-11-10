@@ -26,7 +26,6 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 import xarray as xr
-import zarr
 from git import Repo
 from qcodes.parameters import Parameter
 from qimchi_connect import close_live_measurement, get_live_registration
@@ -146,12 +145,10 @@ class TestFindAvailablePort:
 
 
 class TestLiveStoreRegistry:
-    """Publishing a memory store as a live measurement."""
-
     def test_registering_publishes_the_store_and_its_disk_path(
         self, live_registry, offline_live_server, quiet_registry_maintenance, tmp_path
     ):
-        store = zarr.MemoryStore()
+        store = {}
         disk_path = str(tmp_path / "1-abc.zarr")
 
         port = _register_memory_store("1-abc", store, disk_path=disk_path)
@@ -163,14 +160,7 @@ class TestLiveStoreRegistry:
     def test_registering_writes_a_row_to_the_live_database(
         self, live_registry, offline_live_server, quiet_registry_maintenance, tmp_path
     ):
-        """
-        Qimchi discovers running measurements through this row, so a
-        registration that never reaches the database is invisible to it.
-
-        """
-        _register_memory_store(
-            "1-db", zarr.MemoryStore(), disk_path=str(tmp_path / "1-db.zarr")
-        )
+        _register_memory_store("1-db", {}, disk_path=str(tmp_path / "1-db.zarr"))
 
         record = live_db.get_measurement("1-db")
         assert record is not None
@@ -179,12 +169,7 @@ class TestLiveStoreRegistry:
     def test_a_registration_without_a_disk_path_is_still_recorded(
         self, live_registry, offline_live_server, quiet_registry_maintenance
     ):
-        """
-        A measurement that has not been written to disk yet is still live, so
-        Qimchi should be able to find it; the row simply carries no path.
-
-        """
-        _register_memory_store("1-memory-only", zarr.MemoryStore())
+        _register_memory_store("1-memory-only", {})
 
         record = live_db.get_measurement("1-memory-only")
         assert record is not None
@@ -194,15 +179,10 @@ class TestLiveStoreRegistry:
     def test_a_failing_maintenance_pass_does_not_block_registration(
         self, live_registry, offline_live_server, caplog
     ):
-        """
-        Maintenance is housekeeping over old rows; a locked database must not
-        stop a measurement from starting.
-
-        """
         with patch.object(
             live_db, "maintain_registry", side_effect=RuntimeError("locked")
         ):
-            _register_memory_store("1-unmaintained", zarr.MemoryStore())
+            _register_memory_store("1-unmaintained", {})
 
         # Registry maintenance and its warning belong to Qimchi-Connect.
         assert "Could not maintain the live registry" in caplog.text
@@ -215,14 +195,13 @@ class TestLiveStoreRegistry:
             maintain.return_value = SimpleNamespace(
                 stale_measurement_ids=("1-stale",), deleted_count=2
             )
-            _register_memory_store("1-fresh", zarr.MemoryStore())
+            _register_memory_store("1-fresh", {})
 
         assert "marked 1 stale and deleted 2" in caplog.text
 
     def test_a_started_server_reports_its_port(
         self, live_registry, quiet_registry_maintenance
     ):
-        """The path taken by the first measurement in a session."""
         with (
             patch.object(live_server, "is_server_running", return_value=False),
             patch.object(live_server, "start_live_server", return_value=True),
@@ -230,7 +209,7 @@ class TestLiveStoreRegistry:
             patch.object(live_server, "get_server_host", return_value="localhost"),
             patch.object(measure, "_find_available_port", return_value=8765),
         ):
-            port = _register_memory_store("1-starting", zarr.MemoryStore())
+            port = _register_memory_store("1-starting", {})
 
         assert port == 8765
         assert live_db.get_measurement("1-starting").ws_url == "ws://localhost:8765"
@@ -239,19 +218,13 @@ class TestLiveStoreRegistry:
     def test_a_server_that_will_not_start_leaves_the_port_at_zero(
         self, live_registry, quiet_registry_maintenance, caplog, tmp_path
     ):
-        """
-        Live plotting is optional, so failure to start the server must not stop
-        the measurement. Qimchi-Connect removes the unused provider and writes
-        no discovery row; the Qanary wrapper reports the failure as port zero.
-
-        """
         with (
             patch.object(live_server, "is_server_running", return_value=False),
             patch.object(live_server, "start_live_server", return_value=False),
         ):
             port = _register_memory_store(
                 "1-serverless",
-                zarr.MemoryStore(),
+                {},
                 disk_path=str(tmp_path / "x.zarr"),
             )
 
@@ -273,12 +246,12 @@ class TestLiveStoreRegistry:
         ):
             port = _register_memory_store(
                 "1-unrecorded",
-                zarr.MemoryStore(),
+                {},
                 disk_path=str(tmp_path / "x.zarr"),
             )
 
-        # The run continues without live plotting rather than raising. Without
-        # a discovery row, keeping the provider would not make it discoverable.
+        # The run continues without live plotting; an undiscoverable provider
+        # would serve no purpose.
         assert port == 0
         assert "Failed publishing live measurement 1-unrecorded" in caplog.text
         assert live_server._provider_entry("1-unrecorded") is None
@@ -286,17 +259,15 @@ class TestLiveStoreRegistry:
     def test_publishing_several_measurements_advertises_all_of_them(
         self, live_registry, offline_live_server, quiet_registry_maintenance
     ):
-        _register_memory_store("1-a", zarr.MemoryStore())
-        _register_memory_store("1-b", zarr.MemoryStore())
+        _register_memory_store("1-a", {})
+        _register_memory_store("1-b", {})
 
         assert set(live_server._measurement_ids()) == {"1-a", "1-b"}
 
     def test_unregistering_removes_the_store_and_ends_the_database_row(
         self, live_registry, offline_live_server, quiet_registry_maintenance, tmp_path
     ):
-        _register_memory_store(
-            "1-ending", zarr.MemoryStore(), disk_path=str(tmp_path / "x.zarr")
-        )
+        _register_memory_store("1-ending", {}, disk_path=str(tmp_path / "x.zarr"))
 
         _unregister_memory_store("1-ending")
 
@@ -660,22 +631,12 @@ class TestDataHash:
 
 
 class TestFinalizeDiskArtifacts:
-    """Turning the live zarr store into the single netCDF file that ships."""
-
     @pytest.fixture
     def seeded(self, measurement, gates, signal):
-        """
-        A measurement with a dataset and a live zarr store on disk, as it
-        would be part-way through a run.
-
-        Returns:
-            xr.Dataset: The in-memory dataset.
-
-        """
         dataset = measurement._make_dataset([Sweep(gates.x, 0.0, 1.0, num=3)], [signal])
         dataset["signal"].values[:] = [1.0, 2.0, 3.0]
         measurement.arr = dataset
-        dataset.to_zarr(measurement.live_data, mode="w")
+        dataset.to_zarr(measurement.live_data, mode="w", zarr_format=2)
         return dataset
 
     def test_exports_the_dataset_and_removes_the_zarr_store(self, measurement, seeded):
@@ -801,9 +762,7 @@ class TestFinalizeDiskArtifacts:
         offline_live_server,
         quiet_registry_maintenance,
     ):
-        _register_memory_store(
-            measurement.id, zarr.MemoryStore(), disk_path=measurement.live_data
-        )
+        _register_memory_store(measurement.id, {}, disk_path=measurement.live_data)
 
         measurement._finalize_disk_artifacts(dataset=seeded)
 

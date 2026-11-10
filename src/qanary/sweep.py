@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import os
 from math import isfinite
@@ -7,8 +8,9 @@ from time import monotonic, sleep, time
 from typing import Any, Callable, Optional, Sequence
 
 import numpy as np
-import zarr
 from qcodes.parameters import Parameter
+from zarr.api.asynchronous import open_array
+from zarr.core.sync import sync
 
 from qanary.buffered.sweep import (
     _arm_instruments,
@@ -36,32 +38,27 @@ last_save = 0
 DISK_PERSIST_ATTEMPTS = 6
 DISK_PERSIST_RETRY_DELAY = 0.2
 
-# Digests of the bytes last written to each disk-store key, so a checkpoint only
-# rewrites what actually changed.
-#
-# A checkpoint used to copy every key in the store. That is dominated by per-file
-# I/O rather than data volume -- roughly 0.85 ms per key on Windows -- while only
-# the chunks just acquired actually differ. Group and array metadata, the
-# consolidated .zmetadata, the attributes blob and every coordinate array are
-# rewritten byte-for-byte identically each time.
-#
-# Keyed by store path because _stepper() recurses and each level builds its own
-# closures, so this cannot live in one.
+# Keep live checkpoints compatible with stores written before Zarr 3 support.
+ZARR_FORMAT = 2
+
+# Cache the last digest of each disk-store key so checkpoints only write changes.
+# The store path is stable across recursive `_stepper` calls.
 _DISK_KEY_DIGESTS: dict[str, dict[str, bytes]] = {}
 
 
-def _key_digest(value: bytes) -> bytes:
+def _key_digest(value: Any) -> bytes:
     """
     Return a short digest of one store value.
 
     Args:
-        value (bytes): Encoded chunk or metadata value.
+        value (Any): Encoded Zarr buffer.
 
     Returns:
         bytes: Digest used to detect changes between checkpoints.
 
     """
-    return hashlib.blake2b(value, digest_size=16).digest()
+    data = np.ascontiguousarray(value.as_numpy_array())
+    return hashlib.blake2b(data, digest_size=16).digest()
 
 
 def _store_cache_key(store: Any) -> str:
@@ -72,11 +69,10 @@ def _store_cache_key(store: Any) -> str:
         store (Any): Store object, or a path standing in for one.
 
     Returns:
-        str: Cache key. Zarr normalizes ``DirectoryStore.path``, so the store's
-            own attribute is used rather than whatever path was passed to it.
+        str: The normalized ``LocalStore`` root, or the string form of *store*.
 
     """
-    return str(getattr(store, "path", store))
+    return str(getattr(store, "root", store))
 
 
 def reset_disk_persist_cache(store: Any = None) -> None:
@@ -95,49 +91,115 @@ def reset_disk_persist_cache(store: Any = None) -> None:
         _DISK_KEY_DIGESTS.pop(_store_cache_key(store), None)
 
 
-def _copy_changed_keys(source: Any, target: Any, store_path: str) -> int:
+def _copy_changed_keys(source: dict, target: Any, store_path: str) -> int:
     """
-    Copy only the keys whose contents changed since the last checkpoint.
-
-    The result on disk is identical to copying every key, because a key is
-    skipped only when its bytes are unchanged.
+    Copy keys that changed since the last checkpoint.
 
     Args:
-        source (Any): Store to read from, typically the in-memory store.
-        target (Any): Store to write to, typically the on-disk store.
+        source (dict): In-memory store populated by Zarr.
+        target (Any): Zarr store to write to, typically a ``LocalStore``.
         store_path (str): Identifies ``target`` in the digest cache.
 
     Returns:
-        int: Number of keys actually written.
+        int: Number of keys written.
 
     Raises:
-        PermissionError: If the target store is locked, as before.
+        PermissionError: If the target store is locked.
 
     """
     digests = _DISK_KEY_DIGESTS.setdefault(store_path, {})
+    current = [(key, value, _key_digest(value)) for key, value in list(source.items())]
+    return sync(_write_changed_keys(current, target, digests))
 
-    # If the store was removed or replaced underneath us, what we think is on
-    # disk is worthless -- rewrite everything.
-    if digests and ".zgroup" not in target:
+
+async def _write_changed_keys(
+    current: list, target: Any, digests: dict[str, bytes]
+) -> int:
+    """
+    Write the keys whose digest differs from the one last written.
+
+    Args:
+        current (list): ``(key, value, digest)`` for every key of the source.
+        target (Any): Zarr store to write to.
+        digests (dict[str, bytes]): Digests last written to ``target``,
+            updated as writes land.
+
+    Returns:
+        int: Number of keys written.
+
+    """
+    # A missing group means the cached digests no longer describe this store.
+    if digests and not await target.exists(".zgroup"):
         digests.clear()
 
-    written = 0
-    for key in list(source.keys()):
-        value = source[key]
-        digest = _key_digest(value)
-        if digests.get(key) == digest:
-            continue
-        # Record only after the write lands, so a lock leaves the key dirty and
-        # the next attempt retries it.
-        target[key] = value
+    async def write(key: str, value: Any, digest: bytes) -> None:
+        await target.set(key, value)
+        # Update the digest only after a successful write so failures are retried.
         digests[key] = digest
-        written += 1
-    return written
+
+    changed = [item for item in current if digests.get(item[0]) != item[2]]
+    await _gather_all([write(*item) for item in changed])
+    return len(changed)
 
 
-# Rows of each in-memory store already flushed, keyed by store identity. As with
-# the disk digests, _stepper recurses and each level builds its own closures, so
-# this cannot live in one.
+async def _gather_all(coroutines: list) -> None:
+    """
+    Run every coroutine before raising the first error.
+
+    Waiting for all writes prevents a retry from racing unfinished writes.
+
+    Args:
+        coroutines (list): Coroutines to run.
+
+    """
+    for result in await asyncio.gather(*coroutines, return_exceptions=True):
+        if isinstance(result, BaseException):
+            raise result
+
+
+async def _write_rows(
+    store: dict, arrays: dict, rows: dict[str, np.ndarray], low: int, high: int
+) -> None:
+    """
+    Write rows ``low:high`` of each array in an in-memory store.
+
+    Args:
+        store (dict): The in-memory store.
+        arrays (dict): Arrays already opened in ``store``, by name. Arrays
+            opened here are added to it.
+        rows (dict[str, np.ndarray]): New values of the rows, by array name.
+        low (int): First row.
+        high (int): Row after the last.
+
+    """
+
+    async def write(name: str, values: np.ndarray) -> None:
+        if name not in arrays:
+            arrays[name] = await open_array(
+                store=store, path=name, mode="r+", zarr_format=ZARR_FORMAT
+            )
+        await arrays[name].setitem(slice(low, high), values)
+
+    await _gather_all([write(name, values) for name, values in rows.items()])
+
+
+def _copy_store(source: dict, target: Any) -> int:
+    """
+    Copy every key of an in-memory store into ``target`` and remember them.
+
+    Args:
+        source (dict): The in-memory store.
+        target (Any): Zarr store to write to.
+
+    Returns:
+        int: Number of keys written.
+
+    """
+    reset_disk_persist_cache(target)
+    return _copy_changed_keys(source, target, _store_cache_key(target))
+
+
+# Track flushed rows by store identity across recursive `_stepper` calls.
 _MEMORY_FLUSHED_ROWS: dict[int, int] = {}
 
 
@@ -684,14 +746,15 @@ def _stepper(
         else:
             arr.loc[slow_indexers] = value
 
+    # Reuse opened arrays because parsing their metadata is relatively expensive.
+    memory_arrays: dict = {}
+
     def _persist_memory(position=None):
         """
         Flush acquired points to the in-memory store the live server reads.
 
-        Rewriting the whole dataset costs time proportional to its size, not to
-        what changed: at 12 M points `to_zarr(mode="w")` takes longer than the
-        default 0.1 s checkpoint interval. When the caller knows where the sweep
-        is, only the rows touched since the last flush are written.
+        When the acquired position is known, only rows changed since the last
+        flush are written. Otherwise the whole store is replaced.
 
         Args:
             position (Any): Coordinate values of the point just acquired, or
@@ -710,9 +773,11 @@ def _stepper(
         if region is not None:
             low, high, outer = region
             try:
-                root = zarr.open_group(store=memory_store, mode="r+")
-                for name, variable in dataset.data_vars.items():
-                    root[name][low:high] = variable.values[low:high]
+                rows = {
+                    name: variable.values[low:high]
+                    for name, variable in dataset.data_vars.items()
+                }
+                sync(_write_rows(memory_store, memory_arrays, rows, low, high))
             except Exception as exc:
                 # An unseeded store has no group to open. Fall through to the
                 # full write, which creates one.
@@ -734,7 +799,8 @@ def _stepper(
                     )
                 return
 
-        dataset.to_zarr(store=memory_store, mode="w")
+        memory_arrays.clear()
+        dataset.to_zarr(store=memory_store, mode="w", zarr_format=ZARR_FORMAT)
         _MEMORY_FLUSHED_ROWS[key] = 0
         if verbose:
             logger.info("[_stepper._persist_memory] Saved dataset to in-memory store")
@@ -757,13 +823,17 @@ def _stepper(
                                 len(memory_store),
                             )
                     else:
-                        dataset.to_zarr(store=disk_store, mode="a")
+                        dataset.to_zarr(
+                            store=disk_store, mode="a", zarr_format=ZARR_FORMAT
+                        )
                         if verbose:
                             logger.info(
                                 "[_stepper._persist_disk] Saved dataset directly to disk store"
                             )
                 else:
-                    dataset.to_zarr(store=data_location, mode="w")
+                    dataset.to_zarr(
+                        store=data_location, mode="w", zarr_format=ZARR_FORMAT
+                    )
                     if verbose:
                         logger.info(
                             f"[_stepper._persist_disk] Saved dataset to {data_location}"

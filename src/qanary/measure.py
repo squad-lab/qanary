@@ -35,8 +35,10 @@ from qanary.dataset import convert as _convert_live_store
 from qanary.logger import get_logger
 from qanary.parameters import MultiChannelParameter, ParameterMixin
 from qanary.sweep import (
+    ZARR_FORMAT,
     CircularSweep,
     Sweep,
+    _copy_store,
     _stepper,
     _sweep_parameters,
     reset_disk_persist_cache,
@@ -178,26 +180,24 @@ def _prune_orphaned_live_stores(minimum_age_seconds: float = 3600.0) -> None:
 
 
 def _register_memory_store(
-    measurement_id: str, store: zarr.MemoryStore, disk_path: Optional[str] = None
+    measurement_id: str, store: dict, disk_path: Optional[str] = None
 ) -> int:
     """
-    Publish a memory store as a live measurement.
+    Publish an in-memory Zarr store through Qimchi-Connect.
 
     Args:
         measurement_id (str): Stable identifier for the active measurement.
-        store (zarr.MemoryStore): In-memory Zarr store containing live data.
+        store (dict): In-memory Zarr store containing live data.
         disk_path (Optional[str]): Persisted fallback location advertised to
             consumers.
 
     Returns:
-        int: Port serving the live measurement, or zero if publication failed.
+        int: Serving port, or 0 if publication failed.
 
     """
     _prune_orphaned_live_stores()
 
-    # One call sweeps stale rows, starts the server if it is not already up,
-    # publishes the snapshot callback, and writes the discovery row Qimchi
-    # reads. It also tracks the publication, so there is nothing to keep here.
+    # Registration starts the shared server and writes Qimchi's discovery row.
     try:
         registration = register_live_measurement(
             measurement_id,
@@ -1055,19 +1055,17 @@ class Measurement:
             "Extra Metadata": json.dumps(self.extra_metadata),
         }
 
-        # make empty dataset with global dimensions and buffered dimensions
+        # Allocate slow and buffered dimensions before acquisition.
         self.arr = self._make_dataset(sweeps_complete, dependents)
 
         self.arr.attrs.update(meta)
-        self.memory_store = zarr.MemoryStore()
-        self.disk_store = zarr.DirectoryStore(self.live_data)
-        self.arr.to_zarr(store=self.memory_store, mode="w")
+        # A dict gives checkpoints direct access to Zarr's encoded keys.
+        self.memory_store = {}
+        self.disk_store = zarr.storage.LocalStore(self.live_data)
+        self.arr.to_zarr(store=self.memory_store, mode="w", zarr_format=ZARR_FORMAT)
         if verbose:
             logger.info("[measurement] Seeded dataset to in-memory store")
-        zarr.copy_store(self.memory_store, self.disk_store, if_exists="replace")
-        # Checkpoints track what they have already written; this seeding copy
-        # bypasses that, so start the run from a known-empty cache.
-        reset_disk_persist_cache(self.disk_store)
+        _copy_store(self.memory_store, self.disk_store)
         if verbose:
             logger.info("[measurement] Seeded dataset to disk .zarr store")
         _register_memory_store(
