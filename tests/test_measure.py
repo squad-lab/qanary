@@ -21,7 +21,6 @@ from qanary import measure
 from qanary.measure import (
     Measurement,
     Station,
-    _find_available_port,
     _register_memory_store,
     _sanitize_for_json,
     _unregister_memory_store,
@@ -68,40 +67,6 @@ class TestSanitizeForJson:
         snapshot = {"param": {"value": np.arange(2), "context": object()}}
 
         assert json.dumps(_sanitize_for_json(snapshot))
-
-
-class TestFindAvailablePort:
-    def test_returns_a_port_that_can_be_bound(self):
-        port = _find_available_port(8765)
-
-        assert 8765 <= port < 8865
-
-    def test_skips_a_port_already_in_use(self):
-        import socket
-
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taken:
-            taken.bind(("localhost", 0))
-            busy = taken.getsockname()[1]
-
-            found = _find_available_port(busy)
-
-        assert busy < found <= busy + 100
-
-    def test_falls_back_to_the_starting_port_when_none_are_free(self, monkeypatch):
-
-        class AlwaysBusy:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                return False
-
-            def bind(self, address):
-                raise OSError("address in use")
-
-        monkeypatch.setattr("qanary.measure.socket.socket", lambda *a: AlwaysBusy())
-
-        assert _find_available_port(8765, max_attempts=3) == 8765
 
 
 class TestLiveStoreRegistry:
@@ -167,13 +132,26 @@ class TestLiveStoreRegistry:
             patch.object(live_server, "start_live_server", return_value=True),
             patch.object(live_server, "get_server_port", return_value=8765),
             patch.object(live_server, "get_server_host", return_value="localhost"),
-            patch.object(measure, "_find_available_port", return_value=8765),
         ):
             port = _register_memory_store("1-starting", {})
 
         assert port == 8765
         assert live_db.get_measurement("1-starting").ws_url == "ws://localhost:8765"
         close_live_measurement("1-starting")
+
+    def test_the_operating_system_picks_the_port(
+        self, live_registry, quiet_registry_maintenance
+    ):
+        with (
+            patch.object(live_server, "is_server_running", return_value=False),
+            patch.object(live_server, "start_live_server", return_value=True) as start,
+            patch.object(live_server, "get_server_port", return_value=51234),
+            patch.object(live_server, "get_server_host", return_value="localhost"),
+        ):
+            _register_memory_store("1-any-port", {})
+
+        assert start.call_args.args[1] == 0
+        close_live_measurement("1-any-port")
 
     def test_a_server_that_will_not_start_leaves_the_port_at_zero(
         self, live_registry, quiet_registry_maintenance, caplog, tmp_path

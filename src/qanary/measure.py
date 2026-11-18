@@ -191,7 +191,8 @@ def _register_memory_store(
             measurement_id,
             QanarySnapshotProvider(store),
             disk_path=disk_path,
-            port=_find_available_port(8765),
+            # Several measurements started simultaneously should auto-pick ports
+            port=0,
             retention_days=7,
         )
     except Exception as exc:
@@ -200,28 +201,6 @@ def _register_memory_store(
 
     logger.info(f"Live measurement {measurement_id} published at {registration.ws_url}")
     return registration.ws_port
-
-
-def _find_available_port(start_port: int, max_attempts: int = 100) -> int:
-    """
-    Find an available local TCP port.
-
-    Args:
-        start_port (int): First port to probe.
-        max_attempts (int): Number of consecutive ports to probe.
-
-    Returns:
-        int: First available port, or ``start_port`` if none can be found.
-
-    """
-    for port in range(start_port, start_port + max_attempts):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("localhost", port))
-                return port
-            except OSError:
-                continue
-    return start_port
 
 
 def _unregister_memory_store(measurement_id: str) -> None:
