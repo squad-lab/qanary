@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.13.1 (2026-11-18)
+
+### Bug Fixes
+
+- **measure**: Record timezone-aware start timestamps
+  ([`6f61ad5`](https://gitlab.com/squad-lab/qanary/-/commit/6f61ad5f1ce543a3ba3de128cc55fbeb5ea1f676))
+
+
 ## v0.13.0 (2026-11-10)
 
 ### Continuous Integration
