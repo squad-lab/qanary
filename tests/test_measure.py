@@ -1,5 +1,6 @@
 """Tests for stations, measurements, and complete runs."""
 
+import datetime
 import json
 import os
 import subprocess
@@ -445,6 +446,14 @@ class TestDatasetAllocation:
         assert dataset.attrs["Sample Name"] == "S1"
         assert dataset.attrs["Experiment Name"] == "pinchoff"
         assert dataset.attrs["Measurement ID"] == measurement.id
+
+    def test_the_start_time_includes_a_timezone(self, measurement, gates, signal):
+        dataset = measurement._make_dataset([Sweep(gates.x, 0.0, 1.0, num=2)], [signal])
+
+        started = datetime.datetime.fromisoformat(dataset.attrs["Timestamp"])
+        assert started.tzinfo is not None
+        elapsed = datetime.datetime.now(datetime.timezone.utc) - started
+        assert abs(elapsed) < datetime.timedelta(minutes=1)
 
     def test_the_cryostat_is_taken_from_the_fridge_name(
         self, measurement, gates, signal
