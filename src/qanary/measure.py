@@ -571,7 +571,7 @@ class Measurement:
             self.cryostat = "dummy"
 
         meta = {
-            "Timestamp": datetime.datetime.now().isoformat(),
+            "Timestamp": datetime.datetime.now().astimezone().isoformat(),
             "Cryostat": self.cryostat,
             "Measurement ID": self.id,
             "Wafer ID": self.wafer_id,
